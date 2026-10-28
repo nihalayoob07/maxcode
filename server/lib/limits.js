@@ -4,11 +4,11 @@
 // Days are UTC. Users with their own keys never come here.
 
 // Per install per day: questions, vision calls (a screen read is two), characters Max says (~1 minute).
-export const LIMITS = { chat: 60, vision: 20, voice: 900 };
+export const LIMITS = { chat: 60, vision: 45, voice: 900 };   // vision: screen reads (2 each) and the careful debug pass (1)
 const PER_IP = 5;
 const TOTAL = {
   chat: Number(process.env.CAP_CHAT || 3000),
-  vision: Number(process.env.CAP_VISION || 400),
+  vision: Number(process.env.CAP_VISION || 800),
   voice: Number(process.env.CAP_VOICE || 1300),   // ~20,000 ElevenLabs credits a month (Flash: half a credit per character)
 };
 

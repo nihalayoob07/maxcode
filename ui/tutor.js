@@ -258,11 +258,20 @@ function go(i) {
   S.fi = current().fi;
   setWaiting(S.kind !== 'debug' && S.offer && S.at === S.notes.length - 1 ? 'practice' : null);
   render();
+  if (S.onScreen && S.kind === 'debug') screenNote();
   sayCurrent();
+}
+// The current note, in the callout beside its line on screen.
+function screenNote() {
+  const n = current();
+  if (!n) return window.max.hideNotes();
+  window.max.screenNote({ line: n.line, n: n.n, total: S.notes.length, kind: n.kind, title: n.title, say: n.say,
+    fix: n.find && !n.fixed ? n.replace : '', fixed: !!n.fixed });
 }
 function reset(kind) {
   cancelAsk(); stopVoice();
-  Object.assign(S, { kind, lang: '', title: '', files: [], fi: 0, notes: [], at: 0, simple: false, traced: false, answer: null, showFix: false, practice: null, offer: false, ci: null });
+  Object.assign(S, { kind, lang: '', title: '', files: [], fi: 0, notes: [], at: 0, simple: false, traced: false, answer: null, showFix: false, practice: null, offer: false, ci: null, onScreen: false });
+  window.max.hideNotes();   // a callout from an on-screen debug goes with it
   setWaiting(null);
   task(null);
 }
@@ -460,8 +469,9 @@ Reply exactly in this shape:
 function hint() { if (S.practice?.hint) { task(`${S.practice.question}\nHint: ${S.practice.hint}`, '', 'PRACTICE'); say(S.practice.hint); } }
 
 /* ---------- Debugging ---------- */
-async function debug(files, { editor, dirty } = {}) {
+async function debug(files, { editor, dirty, onScreen } = {}) {
   reset('debug');
+  S.onScreen = !!onScreen;   // read off the screen: notes show next to the code there (main.js callout), fixes are typed in
   S.files = files.map((f) => ({ ...f, code: f.code.replace(/\r\n/g, '\n') }));
   S.lang = langOf(files[0].name); S.title = files[0].name;
   render();
@@ -475,7 +485,8 @@ async function debug(files, { editor, dirty } = {}) {
   const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code)}`).join('\n\n')}`;
   const SHAPE = `Reply exactly in this shape:
 {"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
-kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].`;
+kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].
+A fix ("replace") is the smallest change that makes the program correct and do what it is clearly meant to do, written as the complete corrected line or lines with the same indentation. Never delete, blank out or comment out working logic, and never add comments. If the fix needs a new line next to this one (declaring a variable, reading input), put it in "replace" together with this line.`;
   const r = await askMax(`Debug this code. ${RULES}\n${code}\n${SHAPE}`,
     `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`);
   if (!r) return;
@@ -488,6 +499,7 @@ kind is syntax, runtime or logic. Order errors by file, then line. If there are 
     const summary = (S.notes.length ? `${S.notes.length} problem${S.notes.length > 1 ? 's' : ''}: ${res.summary || ''}`.trim() : 'No problems found. ' + (res.summary || '')).trim() + unsaved;
     task(summary, S.notes.length ? 'bad' : '', S.notes.length ? 'DEBUG' : 'ALL CLEAR');
     render();
+    if (S.onScreen && S.notes.length) { window.max.mode('pet'); screenNote(); }
   };
   show(r);
   const first = S.notes.map((n) => n.line);
@@ -511,9 +523,11 @@ function errorNotes(r) {
   return (r.errors || []).filter((e) => e?.say).map((e) => {
     const fi = Math.max(0, S.files.findIndex((f) => f.name === e.file));
     const f = S.files[fi];
-    const n = { fi, line: locate(f.code, e.line, e.text), text: e.text, say: String(e.say), kind: String(e.kind || 'error'), title: String(e.title || ''),
+    // The line's own text places the note; when Max leaves it out, the first line his fix replaces does.
+    const text = e.text || String(e.find || '').split('\n')[0];
+    const n = { fi, line: locate(f.code, e.line, text), text, say: String(e.say), kind: String(e.kind || 'error'), title: String(e.title || ''),
       find: unnumber(e.find).replace(/\r\n/g, '\n'), replace: unnumber(e.replace ?? '').replace(/\r\n/g, '\n'), path: f.path, fileName: f.name };
-    if (n.find && !f.code.includes(n.find)) n.find = '';
+    if (n.find && (!f.code.includes(n.find) || n.find.trim() === n.replace.trim())) n.find = '';   // not in the code, or a "fix" that changes nothing
     return n;
   });
 }
@@ -534,11 +548,14 @@ async function applyFix() {
   if (!n || !S.showFix) return;
   const f = S.files[n.fi];
   try {
+    if (S.onScreen) await window.max.typeFix({ line: n.line, find: n.find, replace: n.replace });
     if (f.path) f.code = await window.max.tutorSave({ file: f.path, find: n.find, replace: n.replace });
     else f.code = f.code.replace(n.find, () => n.replace);
   } catch (e) {
     S.showFix = false; setWaiting(null); render();
-    return say(String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, ''));
+    const why = String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, '');
+    if (S.onScreen) window.max.screenNote({ ...current(), line: current().line, total: S.notes.length, fix: current().replace, error: why });
+    return say(why);
   }
   n.fixed = true; S.showFix = false;
   setWaiting(null);
@@ -546,8 +563,9 @@ async function applyFix() {
   for (const o of S.notes) if (o !== n && o.fi === n.fi) o.line = locate(f.code, o.line + (o.line > n.line ? n.replace.split('\n').length - n.find.split('\n').length : 0), o.text);
   n.line = locate(f.code, n.line, n.replace.split('\n')[0]);
   render();
+  if (S.onScreen) screenNote();
   const left = S.notes.filter((x) => !x.fixed).length;
-  say(`Done${f.path ? `, saved to ${f.name}` : ''}.${left ? ` ${left} to go.` : ' That was the last one.'}`);
+  say(`Done${f.path ? `, saved to ${f.name}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} to go.` : ' That was the last one.'}`);
 }
 
 /* ---------- Questions ---------- */
@@ -669,6 +687,7 @@ window.max.onTutor((job) => {
   if (S.course && c === 'menu') return menu();
   if (c === 'skip' || (c === 'no' && S.ci !== null)) return S.ci !== null ? finishLesson() : act('nope');
   if (c === 'next' || c === 'prev') return act(c);
+  if (c === 'applyHere') { S.showFix = true; return applyFix(); }   // the callout's Apply fix
   if (c === 'simple') { S.simple = true; render(); return sayCurrent(); }
   if (c === 'trace') return trace();
   if (c === 'fix') return showFix(job.n);

@@ -1,0 +1,28 @@
+/* Max's note beside a line of code on screen (callout.js), in the panel's colours (tutor.css). The arrow points at the line. */
+html, body { background: transparent; overflow: hidden; }
+body { display: block; padding: 2px 4px; }
+.call {
+  position: relative; margin: 0 14px; padding: 10px 12px; background: var(--solid); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); font: 400 14px/1.4 var(--display);
+}
+/* The arrow: on the left when the note sits right of the code, on the right when it sits left of it. */
+.call::before {
+  content: ''; position: absolute; top: var(--arrow, 28px); width: 12px; height: 12px; background: var(--solid);
+  border: 1px solid var(--line-strong); transform: translateY(-50%) rotate(45deg);
+}
+.call.left::before { left: -7px; border-top: 0; border-right: 0; }
+.call.right::before { right: -7px; border-bottom: 0; border-left: 0; }
+.head { display: flex; align-items: center; gap: 8px; }
+.head b { flex: 1; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--red); }
+.head b.ok { color: var(--green); }
+.x { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px; }
+.x:hover { color: var(--text); }
+p { margin: 6px 0; }
+.fix { margin: 6px 0; border-radius: 6px; background: var(--hl); padding: 6px 8px; }
+.fix span { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.fix pre { margin: 2px 0 0; font: 12.5px/1.45 var(--mono); white-space: pre-wrap; word-break: break-all; color: var(--code); }
+.err { color: var(--red); font-size: 13px; }
+.acts { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.acts .btn { padding: 2px 10px; }
+#count { color: var(--muted); font-size: 12px; min-width: 34px; text-align: center; }
+.sp { flex: 1; }

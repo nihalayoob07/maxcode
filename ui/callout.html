@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:">
+  <title>Max's note</title>
+  <link rel="stylesheet" href="../node_modules/@fontsource/jetbrains-mono/400.css">
+  <link rel="stylesheet" href="tutor.css">
+  <link rel="stylesheet" href="callout.css">
+</head>
+<body>
+  <div class="call" id="call">
+    <div class="head"><b id="title"></b><button class="x" id="close" title="Close" aria-label="Close">×</button></div>
+    <p id="say"></p>
+    <div class="fix" id="fixBox"><span>Fix</span><pre id="fix"></pre></div>
+    <p class="err" id="err" hidden></p>
+    <div class="acts">
+      <button class="btn" id="prev" aria-label="Previous">‹</button>
+      <span id="count"></span>
+      <button class="btn" id="next" aria-label="Next">›</button>
+      <span class="sp"></span>
+      <button class="btn p" id="apply">Apply fix</button>
+    </div>
+  </div>
+  <script src="callout.js"></script>
+</body>
+</html>

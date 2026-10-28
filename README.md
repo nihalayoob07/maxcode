@@ -6,7 +6,7 @@ Max hides under the bottom of your screen with just a raised hand peeking out fo
 
 He dresses for the time of day: pyjamas and a nightcap at night (with zzz after midnight), droopy eyes, yawns and coffee early in the morning, sneaky bites of a sandwich at lunch, a backwards cap at weekends, and a witch hat and pumpkin for Halloween, a Santa hat at Christmas and a party hat at New Year. He jumps and sparkles when a bug gets fixed or you get a practice answer right. The schedule is in `ui/costume.js` (`node ui/costume.js` checks it). He looks at his laptop while he's thinking.
 
-- **Debug my code**: finds the code on your screen in any app (an editor, a browser, a slide, a PDF), points at it and asks "Is this the code?" (or lets you drag a box around it), then finds the bugs. If that code is open in VS Code, Cursor or Windsurf, he can apply the fixes you accept.
+- **Debug my code**: finds the code on your screen in any app (an editor, a browser, a slide, a PDF), points at it and asks "Is this the code?" (or lets you drag a box around it), then shows each bug right there: a note beside the line with an arrow at it, and **Apply fix** types the fix into your editor (Ctrl+Z undoes it). Works in any app you can type in.
 - **Debug a file / Explain code**: drop a file or paste a program.
 - **Ask anything**: "how do pointers work in C" gives a lesson with an example you can step through.
 - **Courses** (in his panel): the common languages up front, and 43 in all (Rust, Haskell, COBOL, Assembly…) through the search box. Progress is saved on the PC.

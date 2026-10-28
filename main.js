@@ -2,7 +2,7 @@
 // Vercel), which holds Nihal's NVIDIA and ElevenLabs keys and gives each install a daily allowance. A user who adds
 // their own keys (kept encrypted on this PC with safeStorage) goes straight to NVIDIA / ElevenLabs, with no limits. The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
-const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, screen, shell } = require('electron');
+const { app, BrowserWindow, Tray, clipboard, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
@@ -101,8 +101,9 @@ const LEVELS = {
 ipcMain.handle('tutorAsk', (_e, id, messages, think) => {
   const level = LEVELS[prefs.level] || LEVELS.beginner;
   messages = messages.map((m, i) => (i === 0 && m.role === 'system' ? { ...m, content: `${m.content} ${level}` } : m));
-  return ask({ model: MODEL, messages, temperature: 0.3, max_tokens: think ? 16000 : 4000,
-    chat_template_kwargs: { enable_thinking: !!think } }, id, undefined, think ? 90000 : 280000);   // reasoning: at most 90 s
+  // think: the careful second look, on NVIDIA's big model (much better at real bugs and sound fixes), at most 90 s.
+  return ask({ model: think ? VL_MODEL : MODEL, messages, temperature: think ? 0.1 : 0.3, max_tokens: think ? 8000 : 4000,
+    chat_template_kwargs: { enable_thinking: false } }, id, undefined, think ? 90000 : 280000);
 });
 ipcMain.on('chat-cancel', (_e, id) => asks.get(id)?.abort());
 
@@ -431,7 +432,7 @@ async function capture() {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const px = screen.dipToScreenRect(null, display.bounds);
   const file = path.join(app.getPath('temp'), `maxcode-shot-${process.pid}.png`);
-  const others = [win, settings].filter((w) => w && !w.isDestroyed());
+  const others = [win, settings, callout].filter((w) => w && !w.isDestroyed());
   others.forEach((w) => w.setOpacity(0));
   await new Promise((r) => setTimeout(r, 180));
   try {
@@ -514,11 +515,12 @@ function alike(a, b) {
   for (const [k, n] of pa) both += Math.min(n, pb.get(k) || 0);
   return (2 * both) / (na + nb);
 }
-async function findOnScreen(img, code, display) {
+// Which OCR lines are the code's lines: the biggest run of matches that sit together (a stray match elsewhere, like
+// the file's name in a tab title matching its #include line, is a run of its own), with the spacing between lines so
+// the ones OCR missed (short ones like "}", or ones with squiggles under them) can be placed too. In image pixels.
+function matchLines(seen, code) {
   const all = code.split('\n');
   const lines = all.map((l, i) => ({ t: l.trim(), i })).filter((l) => l.t.length >= 3);
-  if (!lines.length) return null;
-  const seen = await ocr(img);
   const hits = [];   // OCR lines matched to the code's lines, with i: which line of the code
   for (const l of lines) {
     let best = null, score = 0.55;
@@ -526,8 +528,6 @@ async function findOnScreen(img, code, display) {
     if (best) hits.push({ ...best, i: l.i });
   }
   if (!hits.length || (hits.length < 2 && lines.length > 1)) return null;
-  // The main block: the biggest run of matched lines that sit together. A stray match elsewhere (the file's name in a
-  // tab title matching its #include line, say) is a run of its own and doesn't stretch the box.
   hits.sort((a, b) => a.y0 - b.y0);
   const lineH = hits.map((h) => h.y1 - h.y0).sort((a, b) => a - b)[Math.floor(hits.length / 2)] || 20;
   const runs = [[hits[0]]];
@@ -536,23 +536,99 @@ async function findOnScreen(img, code, display) {
     if (h.y0 - run[run.length - 1].y1 > 5 * lineH) runs.push([h]); else run.push(h);
   }
   const block = runs.reduce((x, y) => (y.length > x.length ? y : x));
-  // Lines OCR missed (short ones like "}", or ones with squiggles under them) still belong in the box: the first and
-  // last lines of the code go where the spacing of the found ones puts them.
   const top = block[0], bottom = block[block.length - 1];
   const step = bottom.i > top.i ? (bottom.y0 - top.y0) / (bottom.i - top.i) : lineH * 1.35;
-  const first = all.findIndex((l) => l.trim()), last = all.length - 1 - [...all].reverse().findIndex((l) => l.trim());
   // As wide as the longest line, by the width of the letters OCR found (long lines are often the ones it missed).
   const charW = block.map((h) => (h.x1 - h.x0) / Math.max(1, String(h.t).length)).sort((a, b) => a - b)[Math.floor(block.length / 2)];
-  const x0 = Math.min(...block.map((h) => h.x0)), widest = Math.max(...all.map((l) => l.replace(/	/g, '    ').trimEnd().length));
-  const k = display.size.width / img.getSize().width, pad = 18;
-  const box = [
-    x0,
-    Math.min(top.y0, top.y0 - (top.i - first) * step),
-    Math.max(...block.map((h) => h.x1), x0 + (widest + 2) * charW),
-    Math.max(bottom.y1, bottom.y1 + (last - bottom.i) * step),
-  ].map((v) => v * k);
+  const x0 = Math.min(...block.map((h) => h.x0)), widest = Math.max(...all.map((l) => l.replace(/\t/g, '    ').trimEnd().length));
+  const x1 = Math.max(...block.map((h) => h.x1), x0 + (widest + 2) * charW);
+  return { all, block, top, bottom, step, lineH, x0, x1, lineY: (i) => top.y0 + (i - top.i) * step };
+}
+let screenSeen = null;   // the last screen read: { seen (OCR lines), k (screen points per image pixel), display }
+async function findOnScreen(img, code, display) {
+  const seen = await ocr(img), k = display.size.width / img.getSize().width;
+  screenSeen = { seen, k, display };
+  const m = matchLines(seen, code);
+  if (!m) return null;
+  const first = m.all.findIndex((l) => l.trim()), last = m.all.length - 1 - [...m.all].reverse().findIndex((l) => l.trim()), pad = 18;
+  const box = [m.x0, Math.min(m.top.y0, m.lineY(first)), m.x1, Math.max(m.bottom.y1, m.lineY(last) + m.lineH)].map((v) => v * k);
   return [Math.max(0, box[0] - pad), Math.max(0, box[1] - pad), Math.min(display.size.width, box[2] + pad), Math.min(display.size.height, box[3] + pad)].map(Math.round);
 }
+
+// ---------- Explaining and fixing the code where it is on screen ----------
+// After a screen read, each line of the code has a place on screen (screenMap). Max's notes show in a small callout
+// next to the line, with an arrow at it (ui/callout.*); "Apply fix" finds the line on screen again (you may have
+// scrolled), clicks it, selects it and pastes the fix, so it works in any editor. Ctrl+Z in the editor undoes it.
+let screenMap = null, callout = null;
+// Line i (0-based) of the screen code: its middle and the code block's left and right, in screen points.
+function lineOnScreen(i) {
+  const { m, k, display } = screenMap;
+  return { y: display.bounds.y + (m.lineY(i) + m.lineH / 2) * k, x0: display.bounds.x + m.x0 * k, x1: display.bounds.x + m.x1 * k, display };
+}
+const CALLOUT = { width: 380, height: 230, arrowY: 34 };
+ipcMain.on('screenNote', (_e, note) => {
+  if (!screenMap) return;
+  const at = lineOnScreen(note.line - 1), area = at.display.workArea;
+  const right = at.x1 + 12 + CALLOUT.width <= area.x + area.width;   // beside the code on the right, else on its left
+  const x = right ? at.x1 + 12 : Math.max(area.x, at.x0 - 12 - CALLOUT.width);
+  const y = Math.max(area.y, Math.min(at.y - CALLOUT.arrowY, area.y + area.height - CALLOUT.height));
+  const send = () => callout.webContents.send('note', { ...note, side: right ? 'left' : 'right', arrowY: at.y - y });
+  if (callout && !callout.isDestroyed()) { callout.setBounds({ x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height }); return send(); }
+  callout = new BrowserWindow({
+    x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height, frame: false, transparent: true, resizable: false,
+    skipTaskbar: true, hasShadow: false, alwaysOnTop: true, focusable: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  callout.setAlwaysOnTop(true, 'screen-saver');
+  callout.loadFile(path.join(__dirname, 'ui', 'callout.html'));
+  callout.webContents.once('did-finish-load', send);
+});
+ipcMain.on('hideNotes', () => { if (callout && !callout.isDestroyed()) callout.close(); callout = null; });
+// The callout's buttons go to the tutor page as commands (tutor.js onTutor).
+ipcMain.on('calloutAct', (_e, cmd) => {
+  if (cmd === 'close') { if (callout && !callout.isDestroyed()) callout.close(); callout = null; return; }
+  win.webContents.send('tutor', { kind: 'cmd', cmd });
+});
+// Click the start of a line, select it (and the lines under it the fix covers) and paste: works in any text editor.
+const TYPE = `Add-Type -AssemblyName System.Windows.Forms
+Add-Type -Name Input -Namespace MaxCode -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, System.IntPtr e);'
+$null = [MaxCode.Input]::SetProcessDPIAware()
+$at = $env:MAXCODE_AT -split ','
+$null = [MaxCode.Input]::SetCursorPos([int]$at[0], [int]$at[1])
+[MaxCode.Input]::mouse_event(2, 0, 0, 0, [System.IntPtr]::Zero); [MaxCode.Input]::mouse_event(4, 0, 0, 0, [System.IntPtr]::Zero)
+Start-Sleep -Milliseconds 300
+[System.Windows.Forms.SendKeys]::SendWait($env:MAXCODE_KEYS)
+Start-Sleep -Milliseconds 300
+$null = [MaxCode.Input]::SetCursorPos([int]$at[2], [int]$at[3])`;
+ipcMain.handle('typeFix', async (_e, { line, find, replace }) => {
+  // Find the line again, as it is now: the first line of what the fix replaces, nearest where it was (if known).
+  const { display, img } = await capture();
+  const seen = await ocr(img), k = display.size.width / img.getSize().width;
+  const want = find.split('\n')[0].trim(), was = screenMap ? lineOnScreen(line - 1).y : null;
+  let best = null, score = 0.5;
+  for (const o of seen) {
+    const sc = alike(want, String(o.t)) - (was === null ? 0 : Math.abs(display.bounds.y + ((o.y0 + o.y1) / 2) * k - was) / 2000);
+    if (sc > score) { score = sc; best = o; }
+  }
+  // OCR often reads a line with red squiggles under it in pieces. Then the line goes where the screen read mapped it,
+  // as long as a piece of it is still there (if the code scrolled away, nothing is touched).
+  let x, y;
+  if (best) { x = best.x0 + 2; y = (best.y0 + best.y1) / 2; } else if (screenMap) {
+    const { m } = screenMap, my = m.lineY(line - 1) + m.lineH / 2;
+    const piece = seen.some((o) => Math.abs((o.y0 + o.y1) / 2 - my) < m.lineH && alike(want, String(o.t)) >= 0.2);
+    if (!piece || screenMap.display.id !== display.id) throw new Error("I can't find that line on screen any more (scrolled away?). Run Debug my code again.");
+    x = m.x0 + 2; y = my;
+  } else throw new Error("I can't find that line on screen any more (scrolled away?). Run Debug my code again.");
+  const point = (px, py) => screen.dipToScreenPoint({ x: Math.round(display.bounds.x + px * k), y: Math.round(display.bounds.y + py * k) });
+  const at = point(x, y), back = screen.dipToScreenPoint(screen.getCursorScreenPoint());
+  const old = clipboard.readText();
+  clipboard.writeText(replace);
+  const keys = `{HOME}{HOME}${'+{DOWN}'.repeat(find.split('\n').length - 1)}+{END}^v`;
+  try { await powershell(TYPE, { MAXCODE_AT: [at.x, at.y, back.x, back.y].join(','), MAXCODE_KEYS: keys }); } finally {
+    setTimeout(() => clipboard.writeText(old), 1500);   // your clipboard, as it was
+  }
+  return true;
+});
 
 ipcMain.handle('screenCode', async () => {
   const { display, img } = await capture();
@@ -577,11 +653,9 @@ ipcMain.handle('screenCode', async () => {
   const code = String(out?.code || (answer.rect === box || String(answer.rect) === String(box) ? read?.out?.code : '') || '').replace(/\r/g, '');
   if (!code.trim()) throw new Error("I couldn't read any code there. Try dragging a box around it.");
   const lang = String(out?.lang || found?.out?.lang || '');
-  // The same code open in an editor: use that file, so fixes can be saved to it.
-  const ed = await tutorCode.editorCode().catch(() => null);
-  const line = code.split('\n').map((s) => s.trim()).find((s) => s.length > 10);
-  if (ed && line && ed.files[0]?.code.includes(line)) { tutorCode.allow(ed.files); return ed; }
-  return { files: [{ name: `on screen${EXT[lang.toLowerCase()] || ''}`, code }] };
+  const m = screenSeen && matchLines(screenSeen.seen, code);
+  screenMap = m ? { m, k: screenSeen.k, display: screenSeen.display } : null;
+  return { files: [{ name: `on screen${EXT[lang.toLowerCase()] || ''}`, code }], onScreen: !!screenMap };
 });
 
 function openSettings() {

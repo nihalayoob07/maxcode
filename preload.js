@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld('max', {
   onSay: (fn) => ipcRenderer.on('say', (_e, text) => fn(text)),
   screenCode: () => ipcRenderer.invoke('screenCode'),
   pointAnswer: (a) => ipcRenderer.send('pointAnswer', a),
+  // Notes beside the code on screen (main.js callout) and fixes typed in there
+  screenNote: (note) => ipcRenderer.send('screenNote', note),
+  hideNotes: () => ipcRenderer.send('hideNotes'),
+  typeFix: (fix) => ipcRenderer.invoke('typeFix', fix),
+  onNote: (fn) => ipcRenderer.on('note', (_e, note) => fn(note)),
+  calloutAct: (cmd) => ipcRenderer.send('calloutAct', cmd),
   intent: (text) => ipcRenderer.invoke('intent', text),
   editorCode: () => ipcRenderer.invoke('editorCode'),
   // The chibi and the settings window
