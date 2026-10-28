@@ -1,0 +1,8 @@
+/* The settings window (settings.js): the home screen's look (home.css), full window. */
+.home { inset: 0; }
+.home .courses { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.home .card { cursor: pointer; }
+.home .opt { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 16px; cursor: pointer; }
+.home .opt input { width: 18px; height: 18px; accent-color: var(--blue); }
+#quit { margin-top: 32px; }
+#quit:hover { border-color: var(--red); color: var(--red); }

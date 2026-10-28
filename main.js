@@ -1,7 +1,7 @@
 // Max Code: Max's coding tutor and debugger on its own, no server. The tutor asks NVIDIA's API directly with the
 // user's own key, kept encrypted on this PC (Electron safeStorage). The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
-const { app, BrowserWindow, ipcMain, net, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
@@ -10,6 +10,8 @@ const API = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const MODEL = 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const KEY_FILE = () => path.join(app.getPath('userData'), 'key.bin');
 const COURSES = () => path.join(app.getPath('userData'), 'courses.json');
+const PREFS = () => path.join(app.getPath('userData'), 'prefs.json');
+const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; } };
 
 // ---------- The NVIDIA key ----------
 function readKey() {
@@ -33,7 +35,7 @@ async function ask(key, body, id) {
       method: 'POST', signal: ctl.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body),
     });
-    if (res.status === 401 || res.status === 403) throw new Error('NVIDIA rejected your API key. Change it on the home screen.');
+    if (res.status === 401 || res.status === 403) throw new Error('NVIDIA rejected your API key. Change it in Settings.');
     if (res.status === 429) throw new Error('NVIDIA says too many requests. Wait a minute and try again.');
     const j = await res.json().catch(() => null);
     if (!res.ok || !j?.choices) throw new Error(`the model said: ${String(j?.detail || j?.error?.message || j?.error || res.status).slice(0, 160)}`);
@@ -60,7 +62,7 @@ ipcMain.handle('openKeyPage', () => shell.openExternal('https://build.nvidia.com
 // think: reasoning on (debugging and checking answers, where it pays).
 ipcMain.handle('tutorAsk', (_e, id, messages, think) => {
   const key = readKey();
-  if (!key) throw new Error('Add your NVIDIA API key on the home screen first.');
+  if (!key) throw new Error('Add your NVIDIA API key in Settings first.');
   return ask(key, { model: MODEL, messages, temperature: 0.3, max_tokens: think ? 16000 : 4000,
     chat_template_kwargs: { enable_thinking: !!think } }, id);
 });
@@ -72,8 +74,7 @@ ipcMain.handle('editorCode', async () => {
   return code;
 });
 ipcMain.handle('course', (_e, lang, data) => {
-  let all = {};
-  try { all = JSON.parse(fs.readFileSync(COURSES(), 'utf8')); } catch {}
+  const all = readJSON(COURSES());
   if (data !== undefined) { all[lang] = data; fs.writeFileSync(COURSES(), JSON.stringify(all)); }
   return all[lang] || null;
 });
@@ -81,30 +82,104 @@ ipcMain.handle('tutorSave', (_e, fix) => tutorCode.applyFix(fix));
 ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 
 // ---------- The window ----------
-let win = null;
-ipcMain.handle('tutorWin', (_e, what) => {
-  if (!win || win.isDestroyed()) return false;
-  if (what === 'close') win.close();
-  else if (what === 'min') win.minimize();
-  else if (what === 'pin') win.setAlwaysOnTop(!win.isAlwaysOnTop());
-  return !win.isDestroyed() && win.isAlwaysOnTop();
+// Max sits on the screen as a small chibi (pet). Clicking him opens the tutor as a panel above him: the window grows
+// up and to the left from its bottom-right corner, so he stays where he was. Settings is its own, big window.
+const PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
+let win = null, settings = null, mode = 'pet';
+let prefs = { onTop: true };
+
+let saveTimer = null;
+function savePrefs() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => fs.writeFileSync(PREFS(), JSON.stringify(prefs)), 400);
+}
+// Where the window goes for its size, anchored at the saved bottom-right corner and kept on screen.
+// ponytail: always grows up-left, so near the left/top edge the clamp nudges Max over; flip sides if that bothers.
+function boundsFor(size) {
+  const area = screen.getPrimaryDisplay().workArea;
+  const right = prefs.right ?? area.x + area.width - 24, bottom = prefs.bottom ?? area.y + area.height;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+  return {
+    x: clamp(right - size.width, area.x, area.x + area.width - size.width),
+    y: clamp(bottom - size.height, area.y, area.y + area.height - size.height), ...size,
+  };
+}
+function setMode(m) {
+  mode = m;
+  win.setBounds(boundsFor(m === 'panel' ? PANEL : PET));
+  win.webContents.send('mode', m);
+  if (m === 'panel') win.focus();
+}
+function rememberCorner() {
+  const b = win.getBounds();
+  prefs.right = b.x + b.width; prefs.bottom = b.y + b.height;
+  savePrefs();
+}
+
+ipcMain.handle('tutorWin', (_e, what) => {   // the tutor's close / minimise put Max back to sitting
+  if (what === 'close' || what === 'min') setMode('pet');
+  return prefs.onTop;
+});
+ipcMain.on('mode', (_e, m) => setMode(m === 'panel' ? 'panel' : 'pet'));
+ipcMain.on('drag', (_e, dx, dy) => {
+  const [x, y] = win.getPosition();
+  win.setPosition(Math.round(x + dx), Math.round(y + dy));
+  rememberCorner();
+});
+ipcMain.on('petMenu', () => Menu.buildFromTemplate([
+  { label: mode === 'panel' ? 'Sit down' : 'Open', click: () => setMode(mode === 'panel' ? 'pet' : 'panel') },
+  { label: 'Settings', click: openSettings },
+  { type: 'separator' },
+  { label: 'Quit Max Code', click: () => app.quit() },
+]).popup({ window: win }));
+ipcMain.on('openSettings', openSettings);
+ipcMain.on('quit', () => app.quit());
+
+// ---------- Settings ----------
+ipcMain.handle('prefs', () => ({ onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
+ipcMain.handle('setPref', (_e, name, on) => {
+  if (name === 'onTop') { prefs.onTop = !!on; win.setAlwaysOnTop(prefs.onTop); savePrefs(); }
+  if (name === 'login') app.setLoginItemSettings({ openAtLogin: !!on });
+});
+ipcMain.handle('courses', () => readJSON(COURSES()));
+ipcMain.on('startCourse', (_e, lang) => {
+  setMode('panel');
+  win.webContents.send('startCourse', String(lang));
 });
 
+function openSettings() {
+  if (settings && !settings.isDestroyed()) return settings.focus();
+  settings = new BrowserWindow({
+    width: 760, height: 720, minWidth: 520, minHeight: 480, backgroundColor: '#0a0a0a', title: 'Max Code settings',
+    icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  settings.setMenu(null);
+  settings.loadFile(path.join(__dirname, 'ui', 'settings.html'));
+  settings.on('closed', () => { if (win && !win.isDestroyed()) win.webContents.send('keyChanged'); });
+}
+
 function open() {
+  prefs = { ...prefs, ...readJSON(PREFS()) };
+  nativeTheme.themeSource = 'dark';
   win = new BrowserWindow({
-    width: 980, height: 760, minWidth: 560, minHeight: 420, frame: false, backgroundColor: '#0a0a0a', title: 'Max Code',
-    icon: path.join(__dirname, 'assets', 'icon.png'), show: false,
+    ...boundsFor(PET), frame: false, transparent: true, resizable: false, maximizable: false, skipTaskbar: true,
+    hasShadow: false, alwaysOnTop: prefs.onTop, title: 'Max Code', icon: path.join(__dirname, 'assets', 'icon.png'), show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
-  win.once('ready-to-show', () => win.show());
-  // Links open in the browser, never inside the app.
-  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  win.once('ready-to-show', () => { win.show(); if (!readKey()) openSettings(); });
+  win.on('moved', rememberCorner);   // dragged by the panel's title bar
 }
+// Links open in the browser, never inside the app (both windows).
+app.on('web-contents-created', (_e, wc) => wc.setWindowOpenHandler(({ url }) => {
+  if (/^https:\/\//.test(url)) shell.openExternal(url);
+  return { action: 'deny' };
+}));
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+  app.on('second-instance', () => { if (win) setMode('panel'); });
   app.whenReady().then(open);
   app.on('window-all-closed', () => app.quit());
 }

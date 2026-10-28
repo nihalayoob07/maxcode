@@ -1,33 +1,21 @@
-// Max Code's home screen, over the shared tutor page (tutor.js): the NVIDIA key on first run, then the ways in
-// that voice gives in the full app. It calls the tutor's own functions (lesson, pick, openCourse, debug, showDrop).
+// Max Code's menu, over the shared tutor page (tutor.js) inside the chibi's panel: ask anything, debug, explain.
+// The NVIDIA key and the courses live in the settings window (settings.js). It calls the tutor's own functions
+// (lesson, pick, openCourse, debug, showDrop).
 'use strict';
 (() => {
-  const COURSES = ['C', 'C++', 'Python', 'Java', 'JavaScript', 'C#', 'Go', 'Rust'];
-  const clean = (e) => String(e?.message || e).replace(/^Error invoking remote method '\w+': (Error: )?/, '');
-
-  // Title bar: Home and minimise; no voice here, so no mute; not kept on top until pinned.
+  // Title bar: Home; no voice here, so no mute; keep-on-top is a setting; close puts Max back to sitting.
   $('#mute').remove();
-  $('#pin').classList.remove('on');
+  $('#pin').remove();
   $('.brand').textContent = 'MAX CODE';
-  $('#pin').insertAdjacentHTML('beforebegin', '<button class="chip" id="homeBtn">Home</button>');
-  $('#close').insertAdjacentHTML('beforebegin', `<button class="icon" id="min" title="Minimise" aria-label="Minimise">
-    <svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>`);
+  $('#close').title = 'Close';
+  $('#close').insertAdjacentHTML('beforebegin', '<button class="chip" id="homeBtn">Home</button>');
 
   document.body.insertAdjacentHTML('beforeend', `
   <section class="home" id="home">
-    <div class="homebox" id="setup" hidden>
-      <h1>Welcome to Max Code</h1>
-      <p>Max explains code, teaches languages and finds bugs. It runs on NVIDIA's AI, which needs a free API key.</p>
-      <ol>
-        <li><a href="#" id="getKey">Open NVIDIA's key page</a> and sign in (free).</li>
-        <li>Click <b>Generate API Key</b> and copy it.</li>
-        <li>Paste it here.</li>
-      </ol>
-      <div class="row">
-        <input id="key" type="password" placeholder="nvapi-…" autocomplete="off" spellcheck="false">
-        <button class="btn p" id="saveKey">Save</button>
-      </div>
-      <div class="msg" id="keyMsg">Your key stays on this PC, encrypted.</div>
+    <div class="homebox" id="nokey" hidden>
+      <h1>Hi, I'm Max</h1>
+      <p>I explain code, teach languages and find bugs. First I need a free NVIDIA API key.</p>
+      <button class="btn p" id="addKey">Add the key in Settings</button>
     </div>
     <div class="homebox" id="start" hidden>
       <h1>What do you want to do?</h1>
@@ -37,41 +25,18 @@
         <button class="card" data-go="debug"><b>Debug a file</b><span>Drop a file or paste a program</span></button>
         <button class="card" data-go="explain"><b>Explain code</b><span>Walk through a program line by line</span></button>
       </div>
-      <h2>Courses</h2>
-      <div class="acts start">${COURSES.map((l) => `<button class="btn" data-course="${l}">${l}</button>`).join('')}</div>
-      <a href="#" class="small" id="changeKey">Change NVIDIA key</a>
+      <a href="#" class="small" id="toSettings">Courses and settings</a>
     </div>
   </section>`);
 
   async function home() {
     const has = await window.max.hasKey();
-    $('#setup').hidden = has;
+    $('#nokey').hidden = has;
     $('#start').hidden = !has;
     $('#home').hidden = false;
-    (has ? $('#askHome') : $('#key')).focus();
+    if (has) $('#askHome').focus();
   }
   const leave = () => { $('#home').hidden = true; };
-
-  // ---------- First run: the key ----------
-  $('#getKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage(); };
-  async function saveKey() {
-    const msg = $('#keyMsg');
-    msg.className = 'msg';
-    msg.textContent = 'Checking the key with NVIDIA…';
-    $('#saveKey').disabled = true;
-    try {
-      await window.max.setKey($('#key').value);
-      $('#key').value = '';
-      msg.textContent = 'Your key stays on this PC, encrypted.';
-      home();
-    } catch (e) {
-      msg.className = 'msg bad';
-      msg.textContent = clean(e);
-    } finally { $('#saveKey').disabled = false; }
-  }
-  $('#saveKey').onclick = saveKey;
-  $('#key').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveKey(); });
-  $('#changeKey').onclick = (e) => { e.preventDefault(); $('#start').hidden = true; $('#setup').hidden = false; $('#key').focus(); };
 
   // ---------- The ways in ----------
   async function go(what) {
@@ -96,8 +61,6 @@
   document.addEventListener('click', (e) => {
     const card = e.target.closest('[data-go]');
     if (card) go(card.dataset.go);
-    const c = e.target.closest('[data-course]');
-    if (c) { leave(); openCourse(c.dataset.course); }
   });
   $('#askHome').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
@@ -105,9 +68,18 @@
     $('#askHome').value = '';
     request(t);
   });
+  const settings = (e) => { e.preventDefault(); window.max.openSettings(); };
+  $('#addKey').onclick = settings;
+  $('#toSettings').onclick = settings;
   $('#homeBtn').onclick = () => { reset(null); render(); home(); };
-  $('#min').onclick = () => window.max.tutorWin('min');
   $('#dropCancel').addEventListener('click', home);   // the drop box opened from home: back to it
+
+  // A course picked in Settings opens here.
+  window.max.onStartCourse((lang) => { leave(); openCourse(lang); });
+  // Opening the panel, or closing Settings (the key may have just been added), refreshes the menu.
+  const refresh = () => { if (!$('#home').hidden) home(); };
+  window.max.onMode((m) => { if (m === 'panel') refresh(); });
+  window.max.onKeyChanged(refresh);
 
   home();
 })();
