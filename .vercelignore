@@ -1,0 +1,3 @@
+# Vercel only needs the server (its Root Directory); never upload the app, its installers or node_modules.
+/*
+!/server

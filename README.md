@@ -29,7 +29,7 @@ Download `MaxCode-Setup.exe` from the [Releases](https://github.com/nihalayoob07
 
 ## The server
 
-`server/` is a small Vercel project (team nova, https://maxcode-server-weld.vercel.app): `api/chat.js` (Max's two NVIDIA models only), `api/speak.js` (ElevenLabs), and `lib/limits.js` (per install / per IP / total daily caps in Upstash Redis; `node lib/limits.js` checks them). It needs `NVIDIA_API_KEY`, `ELEVENLABS_API_KEY` and an Upstash Redis store connected in Vercel. Pushing to main deploys it: the Vercel project is linked to this repo with `server/` as its root, and skips builds when `server/` is unchanged.
+`server/` is a small Vercel project (team nova, https://maxcode-server-weld.vercel.app): `api/chat.js` (Max's two NVIDIA models only), `api/speak.js` (ElevenLabs), and `lib/limits.js` (per install / per IP / total daily caps in Upstash Redis; `node lib/limits.js` checks them). It needs `NVIDIA_API_KEY`, `ELEVENLABS_API_KEY` and an Upstash Redis store connected in Vercel. Deploy it with `vercel deploy --prod` from the repo root: the project's Root Directory is `server/` and `.vercelignore` uploads only that folder. (Pushes to main usually deploy it too, but not reliably.)
 
 ## Build it yourself
 
