@@ -86,10 +86,9 @@ ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 // too and the window is hidden. Clicking the hand, or the shortcut, calls him up as a small chibi (pet); clicking him opens the tutor as a panel above him: the window grows
 // up and to the left from its bottom-right corner, so he stays where he was. Settings is its own, big window.
 const HIDE = { width: 50, height: 56 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
-const CALL = 'Control+Alt+M';
 const HAND_FOR = 2 * 60 * 1000;
 let win = null, settings = null, mode = 'hide';
-let prefs = { onTop: true, theme: 'system' };   // theme: system | light (Paper) | dark (Frost)
+let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M' };   // theme: system | light (Paper) | dark (Frost)
 
 let saveTimer = null;
 function savePrefs() {
@@ -156,27 +155,38 @@ ipcMain.on('openSettings', openSettings);
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Settings ----------
-ipcMain.handle('prefs', () => ({ theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
+ipcMain.handle('prefs', () => ({ call: prefs.call, theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
 ipcMain.handle('setPref', (_e, name, on) => {
   if (name === 'onTop') { prefs.onTop = !!on; win.setAlwaysOnTop(prefs.onTop); savePrefs(); }
   if (name === 'login') app.setLoginItemSettings({ openAtLogin: !!on });
   if (name === 'theme' && ['system', 'light', 'dark'].includes(on)) { prefs.theme = on; nativeTheme.themeSource = on; savePrefs(); }
+  if (name === 'call') {
+    if (!bindCall(String(on))) { bindCall(prefs.call); throw new Error("Windows or another app already uses that one. Try another."); }
+    prefs.call = String(on); savePrefs();
+  }
 });
 ipcMain.handle('courses', () => readJSON(COURSES()));
-ipcMain.on('startCourse', (_e, lang) => {
-  setMode('panel');
-  win.webContents.send('startCourse', String(lang));
-});
+// The shortcut that calls Max (Settings can change it). false if it's taken or not a valid accelerator.
+function bindCall(acc) {
+  globalShortcut.unregisterAll();
+  try { return globalShortcut.register(acc, () => setMode('panel')); } catch { return false; }
+}
 
 function openSettings() {
   if (settings && !settings.isDestroyed()) return settings.focus();
   settings = new BrowserWindow({
-    width: 760, height: 720, minWidth: 520, minHeight: 480, backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1e28' : '#fbfaf7', title: 'Max Code settings',
+    width: 380, height: 420, useContentSize: true, resizable: false, maximizable: false, minimizable: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1e28' : '#fbfaf7', title: 'Max Code settings',
     icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   settings.setMenu(null);
   settings.loadFile(path.join(__dirname, 'ui', 'settings.html'));
+  // Exactly as tall as what's in it.
+  settings.webContents.on('did-finish-load', async () => {
+    const h = await settings.webContents.executeJavaScript("document.querySelector('.homebox').offsetHeight + 24");
+    settings.setContentSize(380, Math.min(Math.ceil(h), screen.getPrimaryDisplay().workArea.height - 60));
+  });
   settings.on('closed', () => { if (win && !win.isDestroyed()) win.webContents.send('keyChanged'); });
 }
 
@@ -193,7 +203,7 @@ function open() {
     win.show();
     if (!readKey()) { setMode('pet'); openSettings(); } else handTimer = setTimeout(() => win.hide(), HAND_FOR);
   });
-  globalShortcut.register(CALL, () => setMode('panel'));
+  bindCall(prefs.call);
   win.on('moved', rememberCorner);   // dragged by the panel's title bar
 }
 // Links open in the browser, never inside the app (both windows).

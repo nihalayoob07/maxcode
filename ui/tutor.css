@@ -3,6 +3,7 @@
 :root {
   /* Light: Paper. Warm white, black ink, no colour; the accent is the ink itself. */
   --bg: #fbfaf7;
+  --solid: #fbfaf7;
   --surface: #f4f2ec;
   --surface-2: #ece9e1;
   --line: #e7e4dd;
@@ -30,6 +31,7 @@
   :root {
     /* Dark: Frost. Translucent slate glass, soft corners, one light-blue accent. */
     --bg: rgba(28, 30, 40, 0.94);
+    --solid: #1c1e28;
     --surface: rgba(255, 255, 255, 0.06);
     --surface-2: rgba(255, 255, 255, 0.1);
     --line: rgba(255, 255, 255, 0.08);
@@ -61,6 +63,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--blue-text); outline-offset: 2px; }
 [hidden] { display: none !important; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 
 /* Title bar */
 .bar { display: flex; align-items: center; gap: 10px; height: 40px; padding-left: 16px; border-bottom: 1px solid var(--line); -webkit-app-region: drag; }

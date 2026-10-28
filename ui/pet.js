@@ -1,5 +1,5 @@
 // Max as a small chibi (main.js sizes the window). He hides under the bottom of the screen with a hand peeking out;
-// click the hand (or Ctrl+Alt+M) and he rises. Click him to open the tutor as a panel above him, drag him anywhere,
+// click the hand (or the call shortcut, set in Settings) and he rises. Click him to open the tutor as a panel above him, drag him anywhere,
 // right-click for Settings and Quit. He looks at his laptop while NVIDIA answers, and hides after 5 idle minutes.
 'use strict';
 (() => {
@@ -112,7 +112,7 @@
     </svg>
   </div>`);
   document.body.insertAdjacentHTML('beforeend', `
-  <div id="hand" title="Max is hiding. Click to call him (Ctrl+Alt+M)" role="button" aria-label="Call Max">
+  <div id="hand" title="Max is hiding. Click to call him" role="button" aria-label="Call Max">
     <svg viewBox="0 0 50 56" aria-hidden="true">
       <g class="wave">
         <rect class="sleeve" x="15" y="38" width="20" height="20" fill="#15171a"/>

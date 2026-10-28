@@ -1,5 +1,5 @@
 /* Max Code's menu (home.js) and the settings window: Paper in light mode, Frost in dark (colours in tutor.css). */
-.home { position: fixed; inset: 41px 0 0; background: var(--bg); overflow: auto; display: flex; justify-content: center; padding: 48px 24px; z-index: 5; }
+.home { position: fixed; inset: 41px 0 0; background: var(--solid); overflow: auto; display: flex; justify-content: center; padding: 48px 24px; z-index: 5; }
 .homebox { width: 100%; max-width: 640px; }
 .home h1 { font-size: 26px; font-weight: 600; margin: 0 0 14px; }
 .home h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 32px 0 10px; }
@@ -26,6 +26,10 @@
 .home .card span { color: var(--muted); font-size: 13px; }
 .home .acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .home .small { display: inline-block; margin-top: 32px; font-size: 13px; color: var(--muted); }
+.home .back { margin: 0 0 12px; }
+.home .courses { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.home .courses .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.home .courses .card b::after { content: none; }
 
 @media (prefers-color-scheme: dark) {
   .home input { background: var(--surface); border-radius: 8px; border-bottom: 2px solid var(--blue-text); padding: 10px 12px; }
@@ -35,3 +39,4 @@
   .home .card:hover { background: var(--surface-2); }
   .home .card:hover b { text-decoration: none; }
 }
+.home input:focus-visible { outline: none; }   /* the underline/border already shows focus */

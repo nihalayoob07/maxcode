@@ -1,15 +1,14 @@
-// Max Code's settings window: the NVIDIA key, courses with progress, and the options.
+// Max Code's settings window: the NVIDIA key and the options. Kept small; main.js sizes it to fit.
 'use strict';
 (() => {
   const $ = (s) => document.querySelector(s);
-  const COURSES = ['C', 'C++', 'Python', 'Java', 'JavaScript', 'C#', 'Go', 'Rust'];
   const clean = (e) => String(e?.message || e).replace(/^Error invoking remote method '\w+': (Error: )?/, '');
 
   // ---------- The key ----------
   async function keyState() {
     const has = await window.max.hasKey();
-    $('#keyState').textContent = has ? 'Your key is saved. Paste a new one to replace it.' : 'Max needs a free NVIDIA API key to answer.';
     $('#keySteps').hidden = has;
+    $('#keyMsg').textContent = has ? 'Saved, encrypted on this PC. Paste a new one to replace it.' : 'Stays on this PC, encrypted; only sent to NVIDIA.';
     if (!has) $('#key').focus();
   }
   $('#getKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage(); };
@@ -21,8 +20,8 @@
     try {
       await window.max.setKey($('#key').value);
       $('#key').value = '';
+      await keyState();
       msg.textContent = 'Saved. Click Max to start.';
-      keyState();
     } catch (e) {
       msg.className = 'msg bad';
       msg.textContent = clean(e);
@@ -31,24 +30,42 @@
   $('#saveKey').onclick = saveKey;
   $('#key').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveKey(); });
 
-  // ---------- Courses ----------
-  async function courses() {
-    const all = await window.max.courses();
-    const box = $('#courses');
-    box.replaceChildren(...COURSES.map((lang) => {
-      const c = all[lang], total = c?.syllabus?.length || 0, done = c?.done?.length || 0;
-      const b = document.createElement('button');
-      b.className = 'card';
-      b.append(Object.assign(document.createElement('b'), { textContent: lang }),
-        Object.assign(document.createElement('span'), { textContent: total ? `${done} / ${total} lessons done` : 'Not started' }));
-      b.onclick = () => window.max.startCourse(lang);
-      return b;
-    }));
+  // ---------- The call shortcut: click the box, press the keys ----------
+  const pretty = (acc) => acc.replace('Control', 'Ctrl').replace('Super', 'Win').replace(/\+/g, ' + ');
+  let call = '';
+  // An Electron accelerator from a key press, or '' while only modifiers are held.
+  function accelerator(e) {
+    const key = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5)
+      : /^F\d{1,2}$/.test(e.code) ? e.code : e.code === 'Space' ? 'Space' : /^Arrow/.test(e.code) ? e.code.slice(5) : '';
+    const mods = [e.ctrlKey && 'Control', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Super'].filter(Boolean);
+    if (!key || (!mods.length && !/^F\d/.test(key))) return '';   // a bare letter would fire while typing anywhere
+    return [...mods, key].join('+');
   }
+  const box = $('#call'), callMsg = $('#callMsg');
+  box.addEventListener('focus', () => { box.value = 'Press the keys…'; callMsg.className = 'msg'; callMsg.textContent = 'Esc to cancel'; });
+  box.addEventListener('blur', () => { box.value = pretty(call); if (!callMsg.classList.contains('bad')) callMsg.textContent = ''; });
+  box.addEventListener('keydown', async (e) => {
+    e.preventDefault();
+    if (e.key === 'Escape') return box.blur();
+    const acc = accelerator(e);
+    if (!acc) return;
+    try {
+      await window.max.setPref('call', acc);
+      call = acc;
+      callMsg.className = 'msg';
+      box.blur();
+    } catch (err) {
+      callMsg.className = 'msg bad';
+      callMsg.textContent = clean(err);
+      box.blur();
+    }
+  });
 
   // ---------- Options ----------
   (async () => {
     const p = await window.max.prefs();
+    call = p.call;
+    box.value = pretty(call);
     $('#onTop').checked = p.onTop;
     $('#login').checked = p.login;
     $('#theme').value = p.theme;
@@ -59,6 +76,4 @@
   $('#quit').onclick = () => window.max.quit();
 
   keyState();
-  courses();
-  window.addEventListener('focus', courses);   // progress made in the panel shows when you come back
 })();

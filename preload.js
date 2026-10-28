@@ -33,7 +33,5 @@ contextBridge.exposeInMainWorld('max', {
   prefs: () => ipcRenderer.invoke('prefs'),
   setPref: (name, on) => ipcRenderer.invoke('setPref', name, on),
   courses: () => ipcRenderer.invoke('courses'),
-  startCourse: (lang) => ipcRenderer.send('startCourse', lang),
-  onStartCourse: (fn) => ipcRenderer.on('startCourse', (_e, lang) => fn(lang)),
   quit: () => ipcRenderer.send('quit'),
 });

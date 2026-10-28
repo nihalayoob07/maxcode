@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:">
   <title>Max Code settings</title>
-  <link rel="stylesheet" href="../node_modules/@fontsource/jetbrains-mono/400.css">
   <link rel="stylesheet" href="tutor.css">
   <link rel="stylesheet" href="home.css">
   <link rel="stylesheet" href="settings.css">
@@ -12,31 +11,23 @@
 <body>
   <section class="home">
     <div class="homebox">
-      <h1>Max Code settings</h1>
-
       <h2>NVIDIA API key</h2>
-      <p id="keyState"></p>
       <ol id="keySteps">
         <li><a href="#" id="getKey">Open NVIDIA's key page</a> and sign in (free).</li>
-        <li>Click <b>Generate API Key</b> and copy it.</li>
-        <li>Paste it here.</li>
+        <li>Click <b>Generate API Key</b>, copy it, paste it here.</li>
       </ol>
       <div class="row">
         <input id="key" type="password" placeholder="nvapi-…" autocomplete="off" spellcheck="false">
         <button class="btn p" id="saveKey">Save</button>
       </div>
-      <div class="msg" id="keyMsg">Your key stays on this PC, encrypted, and is only sent to NVIDIA.</div>
+      <div class="msg" id="keyMsg"></div>
 
-      <h2>Courses</h2>
-      <p>Pick a language and Max teaches it in his panel, lesson by lesson. Progress is saved on this PC.</p>
-      <div class="courses" id="courses"></div>
-
-      <h2>Options</h2>
-      <p>Max hides under the bottom of the screen with his hand up for 2 minutes, then out of sight. Click the hand, or press <b>Ctrl+Alt+M</b> any time, to call him; he hides again after 5 minutes idle.</p>
-      <p>He dresses for the time: pyjamas at night, sleepy with coffee early in the morning, sneaking bites of a sandwich at lunch, a cap at weekends, and hats for Halloween, Christmas and New Year. He jumps when a bug gets fixed.</p>
+      <h2>Max</h2>
+      <label class="opt">Call Max <input id="call" class="keys" readonly title="Click, then press the keys you want"></label>
+      <div class="msg" id="callMsg"></div>
       <label class="opt">Theme <select id="theme"><option value="system">Same as Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-      <label class="opt"><input type="checkbox" id="onTop"> Keep Max on top of other windows</label>
-      <label class="opt"><input type="checkbox" id="login"> Start Max Code with Windows</label>
+      <label class="opt"><input type="checkbox" id="onTop"> Keep on top of other windows</label>
+      <label class="opt"><input type="checkbox" id="login"> Start with Windows</label>
 
       <button class="btn" id="quit">Quit Max Code</button>
     </div>
