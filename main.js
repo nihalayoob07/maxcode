@@ -256,7 +256,7 @@ ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 // too and the window is hidden. Clicking the hand, or the shortcut, calls him up as a small chibi (pet); clicking him opens the tutor as a panel above him: the window grows
 // up and to the left from its bottom-right corner, so he stays where he was. Settings is its own, big window.
 // The hand is about half as wide as the chibi, with just the cuff and a bit of sleeve showing.
-const HIDE = { width: 34, height: 43 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
+const HIDE = { width: 48, height: 46 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
 const HAND_FOR = 2 * 60 * 1000;
 let win = null, settings = null, mode = 'hide';
 let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', talk: 'Control+Alt+Space', wake: true, level: 'beginner' };   // theme: system | light (Paper) | dark (Frost)

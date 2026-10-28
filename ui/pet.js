@@ -136,7 +136,7 @@
   </div>`);
   document.body.insertAdjacentHTML('beforeend', `
   <div id="hand" title="Max is hiding. Click to call him" role="button" aria-label="Call Max">
-    <svg viewBox="8 4 30 38" aria-hidden="true">
+    <svg viewBox="2 2 42 40" aria-hidden="true">
       <g class="wave">
         <rect class="sleeve" x="15" y="38" width="20" height="20" fill="#15171a"/>
         <rect class="cuff" x="13.5" y="35" width="23" height="5" rx="2.5" fill="#007ba7"/>
