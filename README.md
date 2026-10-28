@@ -2,7 +2,9 @@
 
 Max's coding tutor and debugger as its own Windows app. No server, no setup: install it, paste a free NVIDIA API key once, and go.
 
-Max hides under the bottom of your screen with just a raised hand peeking out for 2 minutes, then out of sight. Click the hand, or press **Ctrl+Alt+M** any time, and he pops up as a small chibi (curly hair, glasses, laptop). Click him to open his panel, drag him anywhere, right-click for Settings or Quit. After 5 idle minutes he hides again. He looks at his laptop while he's thinking.
+Max hides under the bottom of your screen with just a raised hand peeking out for 2 minutes, then out of sight. Click the hand, or press **Ctrl+Alt+M** any time, and he pops up as a small chibi (curly hair, glasses, laptop). Click him to open his panel, drag him anywhere, right-click for Settings or Quit. After 5 idle minutes he hides again.
+
+He dresses for the time of day: pyjamas and a nightcap at night (with zzz after midnight), droopy eyes, yawns and coffee early in the morning, sneaky bites of a sandwich at lunch, a backwards cap at weekends, and a witch hat and pumpkin for Halloween, a Santa hat at Christmas and a party hat at New Year. He jumps and sparkles when a bug gets fixed or you get a practice answer right. The schedule is in `ui/costume.js` (`node ui/costume.js` checks it). He looks at his laptop while he's thinking.
 
 - **Debug my code**: reads the file open in VS Code, Cursor or Windsurf, finds the bugs, and applies the fixes you accept.
 - **Debug a file / Explain code**: drop a file or paste a program.

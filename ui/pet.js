@@ -15,10 +15,20 @@
     <svg viewBox="0 0 120 130" aria-hidden="true">
       <ellipse cx="60" cy="125" rx="36" ry="4" fill="#000" opacity=".35"/>
       <g class="think"><circle cx="92" cy="14" r="3"/><circle cx="102" cy="10" r="3"/><circle cx="112" cy="6" r="3"/></g>
+      <g class="k k-owl zzz" fill="#9aa8d6" font-family="Segoe UI, sans-serif" font-weight="700">
+        <text x="20" y="38" font-size="9">z</text><text x="11" y="27" font-size="11">z</text><text x="2" y="15" font-size="13">Z</text>
+      </g>
       <g class="me">
-        <rect x="36" y="76" width="48" height="40" rx="16" fill="#15171a" stroke="#2c3036"/>
-        <path d="M48 78q12 9 24 0" fill="none" stroke="#007ba7" stroke-width="2.5" stroke-linecap="round"/>
-        <path d="M54 84v10M66 84v10" stroke="#ff2d95" stroke-width="1.6" stroke-linecap="round"/>
+        <rect class="shirt" x="36" y="76" width="48" height="40" rx="16" fill="#15171a" stroke="#2c3036"/>
+        <g class="hoodie">
+          <path d="M48 78q12 9 24 0" fill="none" stroke="#007ba7" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M54 84v10M66 84v10" stroke="#ff2d95" stroke-width="1.6" stroke-linecap="round"/>
+        </g>
+        <g class="k k-pyjamas">
+          <path d="M49 78l11 8 11-8" fill="none" stroke="#f4e7a1" stroke-width="2.2" stroke-linejoin="round"/>
+          <g fill="#f4e7a1"><circle cx="42" cy="86" r="1.3"/><circle cx="79" cy="84" r="1.3"/><circle cx="60" cy="90" r="1.1"/></g>
+          <path d="M44 80a3 3 0 1 0 3 4 2.4 2.4 0 1 1-3-4z" fill="#f4e7a1"/>
+        </g>
         <circle cx="60" cy="50" r="28" fill="#f2d6c2"/>
         <g fill="#2a1d18">
           <circle cx="35" cy="47" r="7"/><circle cx="36" cy="37" r="8"/><circle cx="43" cy="28" r="8"/><circle cx="52" cy="23" r="8"/>
@@ -31,9 +41,14 @@
         <path d="M27 50a33 33 0 0 1 66 0" fill="none" stroke="#ff2d95" stroke-width="4" stroke-linecap="round"/>
         <rect x="25" y="42" width="10" height="18" rx="5" fill="#ff2d95"/>
         <rect x="85" y="42" width="10" height="18" rx="5" fill="#ff2d95"/>
+        <g class="k k-owl" fill="#7a5a9a" opacity=".35"><ellipse cx="50" cy="63.5" rx="5" ry="1.7"/><ellipse cx="70" cy="63.5" rx="5" ry="1.7"/></g>
         <g class="eyes">
           <ellipse cx="50" cy="56" rx="3.4" ry="4.4" fill="#1b1c22"/><circle cx="51.3" cy="54.4" r="1.3" fill="#fff"/>
           <ellipse cx="70" cy="56" rx="3.4" ry="4.4" fill="#1b1c22"/><circle cx="71.3" cy="54.4" r="1.3" fill="#fff"/>
+          <g class="k k-sleepy k-owl lids" fill="#f2d6c2" stroke="#1b1c22" stroke-width="1.2">
+            <path d="M45.8 50.8h8.4v5.2h-8.4z" stroke="none"/><path d="M45.8 56h8.4" fill="none"/>
+            <path d="M65.8 50.8h8.4v5.2h-8.4z" stroke="none"/><path d="M65.8 56h8.4" fill="none"/>
+          </g>
         </g>
         <g class="glasses" fill="#fff" fill-opacity=".1" stroke="#1b1c22" stroke-width="2">
           <circle cx="50" cy="56" r="8.5"/><circle cx="70" cy="56" r="8.5"/>
@@ -42,19 +57,66 @@
         <ellipse cx="44" cy="64" rx="4" ry="2.4" fill="#ff2d95" opacity=".3"/>
         <ellipse cx="76" cy="64" rx="4" ry="2.4" fill="#ff2d95" opacity=".3"/>
         <path class="mouth" d="M56 66q4 3 8 0" fill="none" stroke="#7a3b3b" stroke-width="1.8" stroke-linecap="round"/>
+        <ellipse class="mouth-o" cx="60" cy="67.5" rx="2.6" ry="3.2" fill="#7a3b3b"/>
+
+        <g class="k k-nightcap">
+          <path d="M37 25C40 5 70-1 98 10c-6 2-10 8-15 15z" fill="#3d4f9c"/>
+          <rect x="34" y="21" width="52" height="9" rx="4.5" fill="#f4e7a1"/><circle cx="99" cy="11" r="5" fill="#f4e7a1"/>
+        </g>
+        <g class="k k-santa">
+          <path d="M37 25C40 5 70-1 98 10c-6 2-10 8-15 15z" fill="#d62c3a"/>
+          <rect x="34" y="21" width="52" height="9" rx="4.5" fill="#fff"/><circle cx="99" cy="11" r="5" fill="#fff"/>
+        </g>
+        <g class="k k-cap">
+          <path d="M34 33C34 9 86 9 86 33z" fill="#007ba7"/><rect x="53" y="27" width="14" height="6" rx="3" fill="#2a1d18"/>
+          <path d="M34 33h52" stroke="#00597a" stroke-width="2.5"/><circle cx="60" cy="12" r="2" fill="#00597a"/>
+        </g>
+        <g class="k k-halloween">
+          <ellipse cx="60" cy="26" rx="37" ry="5.5" fill="#2b1b3d"/>
+          <path d="M42 25c8-7 16-19 28-24-4 9 0 17 8 24z" fill="#2b1b3d"/>
+          <path d="M44 21q16 4 32 0l1 3.5q-17 4.5-34 0z" fill="#ff8a1f"/>
+        </g>
+        <g class="k k-party">
+          <path d="M48 25 63 2l13 21z" fill="#ff2d95"/>
+          <path d="M54 16l13 3M58 9l8 2" stroke="#7cc7ff" stroke-width="2.5"/><circle cx="63" cy="3" r="3.2" fill="#ffd23f"/>
+          <g class="confetti"><rect x="20" y="14" width="3" height="5" fill="#7cc7ff" transform="rotate(20 21 16)"/>
+            <rect x="96" y="22" width="3" height="5" fill="#ffd23f" transform="rotate(-25 97 24)"/>
+            <rect x="28" y="4" width="3" height="5" fill="#4ec98b" transform="rotate(50 29 6)"/><circle cx="90" cy="6" r="1.8" fill="#ff2d95"/></g>
+        </g>
       </g>
       <rect class="screen" x="38" y="90" width="44" height="24" rx="3" fill="#1f2328" stroke="#007ba7" stroke-width="1.5"/>
       <circle class="glow" cx="60" cy="102" r="3" fill="#4fb8e0"/>
       <path d="M30 114h60l-5 6H35z" fill="#2b2f35"/>
-      <circle cx="36" cy="110" r="5" fill="#f2d6c2"/><circle cx="84" cy="110" r="5" fill="#f2d6c2"/>
+      <circle cx="36" cy="110" r="5" fill="#f2d6c2"/><circle class="rhand" cx="84" cy="110" r="5" fill="#f2d6c2"/>
+
+      <g class="k k-sleepy">
+        <g class="steam" fill="none" stroke="#c9ced8" stroke-width="1.4" stroke-linecap="round"><path d="M17 96q-2-3 0-6t0-6"/><path d="M22 97q-2-3 0-6t0-6"/></g>
+        <path d="M27 103h3a3 3 0 0 1 0 7h-3" fill="none" stroke="#fbfaf7" stroke-width="2"/>
+        <rect x="13" y="99" width="15" height="16" rx="3" fill="#fbfaf7"/><rect x="13" y="104" width="15" height="3" fill="#ff2d95"/>
+      </g>
+      <g class="k k-halloween">
+        <ellipse cx="104" cy="113" rx="11" ry="9" fill="#ff8a1f"/>
+        <path d="M98 105q-3 8 0 16M110 105q3 8 0 16" fill="none" stroke="#d96d0f" stroke-width="1.2"/>
+        <rect x="102.5" y="101" width="3" height="5" rx="1" fill="#4a7a2a"/>
+        <path d="M99 111l2.5-3 2.5 3zM105 111l2.5-3 2.5 3zM99 115q5 4 10 0q-5 2-10 0z" fill="#2b1b3d"/>
+      </g>
+      <g class="k k-lunch snack">
+        <path d="M78 106l17-6-3 13z" fill="#e9c48a" stroke="#b98a4e" stroke-width="1"/>
+        <path d="M79.5 106.5l14-5" stroke="#6cbf5a" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="84" cy="110" r="5" fill="#f2d6c2"/>
+      </g>
+      <g class="sparkles" fill="#ffd23f">
+        <path d="M18 34l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path d="M102 40l1.6 4 4 1.6-4 1.6-1.6 4-1.6-4-4-1.6 4-1.6z"/>
+        <path d="M24 72l1.4 3.4 3.4 1.4-3.4 1.4-1.4 3.4-1.4-3.4-3.4-1.4 3.4-1.4z"/>
+      </g>
     </svg>
   </div>`);
   document.body.insertAdjacentHTML('beforeend', `
   <div id="hand" title="Max is hiding. Click to call him (Ctrl+Alt+M)" role="button" aria-label="Call Max">
     <svg viewBox="0 0 50 56" aria-hidden="true">
       <g class="wave">
-        <rect x="15" y="38" width="20" height="20" fill="#15171a"/>
-        <rect x="13.5" y="35" width="23" height="5" rx="2.5" fill="#007ba7"/>
+        <rect class="sleeve" x="15" y="38" width="20" height="20" fill="#15171a"/>
+        <rect class="cuff" x="13.5" y="35" width="23" height="5" rx="2.5" fill="#007ba7"/>
         <rect x="15.5" y="9" width="4.6" height="16" rx="2.3" fill="#f2d6c2"/>
         <rect x="20.6" y="5" width="4.6" height="18" rx="2.3" fill="#f2d6c2"/>
         <rect x="25.7" y="6" width="4.6" height="17" rx="2.3" fill="#f2d6c2"/>
@@ -107,6 +169,23 @@
   hand.addEventListener('contextmenu', (e) => { e.preventDefault(); window.max.petMenu(); });
 
   // Back into hiding after 5 minutes with no clicks, typing or answers coming in.
+  // What he's wearing (costume.js): checked every minute.
+  const dress = () => {
+    for (const c of [...cls].filter((c) => c.startsWith('c-'))) cls.remove(c);
+    for (const c of costumes(new Date())) cls.add(`c-${c}`);
+  };
+  dress();
+  setInterval(dress, 60000);
+
+  // A jump and sparkles when a fix is applied (a tick in the gutter) or a practice answer is right.
+  let wins = 0;
+  new MutationObserver(() => {
+    const n = document.querySelectorAll('#code .g b.ok, #code .head.ok').length;
+    if (n > wins) { chibi.classList.remove('cheer'); void chibi.offsetWidth; chibi.classList.add('cheer'); }
+    wins = n;
+  }).observe($('#code'), { childList: true, subtree: true });
+  chibi.addEventListener('animationend', (e) => { if (e.animationName === 'jump') chibi.classList.remove('cheer'); });
+
   const IDLE = 5 * 60 * 1000;
   let lastActive = Date.now();
   const active = () => { lastActive = Date.now(); };
