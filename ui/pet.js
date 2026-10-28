@@ -50,10 +50,20 @@
             <path d="M65.8 50.8h8.4v5.2h-8.4z" stroke="none"/><path d="M65.8 56h8.4" fill="none"/>
           </g>
         </g>
+        <g class="dizzy-eyes" fill="none" stroke="#1b1c22" stroke-width="1.3" stroke-linecap="round">
+          <path d="M50 56a1 1 0 0 1 1.6.4 2 2 0 0 1-2.4 1.6 3 3 0 0 1-2.2-3.6 4 4 0 0 1 4.8-2.6"><animateTransform attributeName="transform" type="rotate" from="0 50 56" to="360 50 56" dur=".8s" repeatCount="indefinite"/></path>
+          <path d="M70 56a1 1 0 0 1 1.6.4 2 2 0 0 1-2.4 1.6 3 3 0 0 1-2.2-3.6 4 4 0 0 1 4.8-2.6"><animateTransform attributeName="transform" type="rotate" from="0 70 56" to="360 70 56" dur=".8s" repeatCount="indefinite"/></path>
+        </g>
+        <path class="shut" d="M46 57q4 3 8 0M66 57q4 3 8 0" fill="none" stroke="#1b1c22" stroke-width="1.6" stroke-linecap="round"/>
         <g class="glasses" fill="#fff" fill-opacity=".1" stroke="#1b1c22" stroke-width="2">
           <circle cx="50" cy="56" r="8.5"/><circle cx="70" cy="56" r="8.5"/>
           <path d="M58.5 55q1.5-2 3 0M41.5 54l-5-2M78.5 54l5-2" fill="none"/>
         </g>
+        <g class="shades">
+          <path d="M40 51h18v6a5 5 0 0 1-5 5h-8a5 5 0 0 1-5-5zM62 51h18v6a5 5 0 0 1-5 5h-8a5 5 0 0 1-5-5z" fill="#111"/>
+          <path d="M58 53h4" stroke="#111" stroke-width="2"/><path d="M43 54l4-1.5M65 54l4-1.5" stroke="#fff" stroke-opacity=".6" stroke-width="1.2"/>
+        </g>
+        <path class="sweat" d="M84 36q3.5 5 0 8a3.5 3.5 0 0 1-3.5-3.5q0-2 3.5-4.5z" fill="#7cc7ff"/>
         <ellipse cx="44" cy="64" rx="4" ry="2.4" fill="#ff2d95" opacity=".3"/>
         <ellipse cx="76" cy="64" rx="4" ry="2.4" fill="#ff2d95" opacity=".3"/>
         <path class="mouth" d="M56 66q4 3 8 0" fill="none" stroke="#7a3b3b" stroke-width="1.8" stroke-linecap="round"/>
@@ -86,6 +96,12 @@
       </g>
       <rect class="screen" x="38" y="90" width="44" height="24" rx="3" fill="#1f2328" stroke="#007ba7" stroke-width="1.5"/>
       <circle class="glow" cx="60" cy="102" r="3" fill="#4fb8e0"/>
+      <text class="k k-leet" x="60" y="105" text-anchor="middle" font-family="Consolas, monospace" font-size="8" font-weight="700" fill="#39ff14">1337</text>
+      <g class="orbit" transform="translate(60 20) scale(1 .35)"><g fill="#ffd23f">
+        <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="1.2s" repeatCount="indefinite"/>
+        <path d="M34 -6l1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2-4.2-1.8 4.2-1.8z"/><path d="M-34 -6l1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2-4.2-1.8 4.2-1.8z"/><path d="M0 28l1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2-4.2-1.8 4.2-1.8z"/><path d="M0 -40l1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2-4.2-1.8 4.2-1.8z"/>
+      </g></g>
+      <g class="k k-friday notes" fill="#ff2d95" font-family="Segoe UI Symbol, sans-serif" font-size="13"><text x="8" y="44">♪</text><text x="100" y="56">♫</text></g>
       <path d="M30 114h60l-5 6H35z" fill="#2b2f35"/>
       <circle cx="36" cy="110" r="5" fill="#f2d6c2"/><circle class="rhand" cx="84" cy="110" r="5" fill="#f2d6c2"/>
 
@@ -93,6 +109,13 @@
         <g class="steam" fill="none" stroke="#c9ced8" stroke-width="1.4" stroke-linecap="round"><path d="M17 96q-2-3 0-6t0-6"/><path d="M22 97q-2-3 0-6t0-6"/></g>
         <path d="M27 103h3a3 3 0 0 1 0 7h-3" fill="none" stroke="#fbfaf7" stroke-width="2"/>
         <rect x="13" y="99" width="15" height="16" rx="3" fill="#fbfaf7"/><rect x="13" y="104" width="15" height="3" fill="#ff2d95"/>
+      </g>
+      <g class="k k-birthday">
+        <ellipse cx="18" cy="119" rx="12" ry="2.5" fill="#d9d9e0"/>
+        <rect x="8" y="104" width="20" height="14" rx="3" fill="#ff8fc4"/>
+        <path d="M8 107q2.5 4 5 0t5 0 5 0 5 0v-1a3 3 0 0 0-3-3H11a3 3 0 0 0-3 3z" fill="#fff"/>
+        <rect x="16.8" y="95" width="2.4" height="8" rx="1" fill="#7cc7ff"/>
+        <ellipse class="flame" cx="18" cy="92.5" rx="2" ry="3" fill="#ffb42b"/>
       </g>
       <g class="k k-halloween">
         <ellipse cx="104" cy="113" rx="11" ry="9" fill="#ff8a1f"/>
@@ -136,16 +159,48 @@
     start = last = { x: e.screenX, y: e.screenY };
     dragged = false;
   });
+  // Easter eggs: a reaction plays for a while (pet.css draws each one).
+  const react = (name, ms) => {
+    chibi.classList.add(name);
+    setTimeout(() => chibi.classList.remove(name), ms);
+  };
+  // Shaken while dragged (lots of quick changes of direction): dizzy.
+  let flips = [], lastDx = 0;
   chibi.addEventListener('pointermove', (e) => {
     if (!start) return;
     if (!dragged && Math.hypot(e.screenX - start.x, e.screenY - start.y) < 4) return;
     dragged = true;
-    window.max.drag(e.screenX - last.x, e.screenY - last.y);
+    const dx = e.screenX - last.x;
+    if (Math.abs(dx) > 4) {
+      if (lastDx && Math.sign(dx) !== Math.sign(lastDx)) flips = [...flips.filter((t) => Date.now() - t < 1200), Date.now()];
+      lastDx = dx;
+    }
+    window.max.drag(dx, e.screenY - last.y);
     last = { x: e.screenX, y: e.screenY };
   });
+  // One click opens/closes the panel; poked three times quickly, he gets dizzy instead.
+  let pokes = 0, pokeTimer = null;
   chibi.addEventListener('pointerup', () => {
-    if (start && !dragged) window.max.mode(document.body.classList.contains('pet') ? 'panel' : 'pet');
-    start = null;
+    if (start && dragged && flips.length >= 6) react('dizzy', 3000);
+    if (start && !dragged) {
+      pokes++;
+      clearTimeout(pokeTimer);
+      if (pokes >= 3) { pokes = 0; react('dizzy', 3000); }
+      else pokeTimer = setTimeout(() => { pokes = 0; window.max.mode(document.body.classList.contains('pet') ? 'panel' : 'pet'); }, 250);
+    }
+    start = null; flips = []; lastDx = 0;
+  });
+  // Hovered for 2 s: he waves.
+  let hoverTimer = null;
+  chibi.addEventListener('pointerenter', () => { hoverTimer = setTimeout(() => react('wave', 2200), 2000); });
+  chibi.addEventListener('pointerleave', () => clearTimeout(hoverTimer));
+  document.addEventListener('maxwave', () => react('wave', 2200));   // "hi Max" typed (home.js)
+  // The Konami code (↑ ↑ ↓ ↓ ← → ← → B A) in the panel: sunglasses for a minute.
+  const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+  let konami = 0;
+  document.addEventListener('keydown', (e) => {
+    konami = e.key.toLowerCase() === KONAMI[konami].toLowerCase() ? konami + 1 : (e.key === KONAMI[0] ? 1 : 0);
+    if (konami === KONAMI.length) { konami = 0; react('shades', 60000); say('Deal with it.'); }
   });
   chibi.addEventListener('contextmenu', (e) => { e.preventDefault(); window.max.petMenu(); });
   chibi.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') window.max.mode('panel'); });
@@ -178,20 +233,25 @@
   setInterval(dress, 60000);
 
   // A jump and sparkles when a fix is applied (a tick in the gutter) or a practice answer is right.
-  let wins = 0;
+  let wins = 0, bugs = 0;
   new MutationObserver(() => {
     const n = document.querySelectorAll('#code .g b.ok, #code .head.ok').length;
     if (n > wins) { chibi.classList.remove('cheer'); void chibi.offsetWidth; chibi.classList.add('cheer'); }
     wins = n;
+    const b = document.querySelectorAll('#code .head.bad').length;   // bugs found: a sweat drop and a red screen
+    if (b > bugs) react('oops', 2600);
+    bugs = b;
   }).observe($('#code'), { childList: true, subtree: true });
   chibi.addEventListener('animationend', (e) => { if (e.animationName === 'jump') chibi.classList.remove('cheer'); });
 
   const IDLE = 5 * 60 * 1000;
   let lastActive = Date.now();
-  const active = () => { lastActive = Date.now(); };
+  const active = () => { lastActive = Date.now(); chibi.classList.remove('nap'); };
   for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, active, { passive: true });
   setInterval(() => {
     if (!$('#busy').hidden) return active();
+    // Sitting with nothing to do for 2.5 minutes: he nods off (a hover wakes him).
+    if (cls.contains('pet') && !cls.contains('hide') && Date.now() - lastActive > 150000) chibi.classList.add('nap');
     if (!cls.contains('hide') && Date.now() - lastActive > IDLE) window.max.mode('hide');
   }, 10000);
   // Thinking pose while the tutor waits on NVIDIA (tutor.js shows #busy).

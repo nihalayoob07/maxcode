@@ -1,13 +1,14 @@
 // Max Code: Max's coding tutor and debugger on its own, no server. The tutor asks NVIDIA's API directly with the
 // user's own key, and talks and listens through ElevenLabs with theirs; both kept encrypted on this PC (safeStorage). The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
-const { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeTheme, net, safeStorage, screen, shell } = require('electron');
+const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
 
 const API = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const MODEL = 'nvidia/nemotron-3.5-lightning-30b-a3b';
+const VL_MODEL = 'nvidia/nemotron-3.5-super-vl-120b-a12b';   // reads code off the screen
 const KEY_FILE = () => path.join(app.getPath('userData'), 'key.bin');
 const VOICE_KEY_FILE = () => path.join(app.getPath('userData'), 'voice-key.bin');
 const COURSES = () => path.join(app.getPath('userData'), 'courses.json');
@@ -131,13 +132,28 @@ ipcMain.handle('speak', async (e, id, text) => {
     }
   } finally { hush.delete(id); }
 });
-// What the mic heard (webm from the panel) as text.
-ipcMain.handle('transcribe', async (_e, audio) => {
+// What the mic heard (16 kHz float samples from voice.js) as text: the local Whisper that hears "Max" (no key, nothing
+// leaves the PC), or ElevenLabs if the user added a key.
+function wav(samples) {
+  const b = Buffer.alloc(44 + samples.length * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + samples.length * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(16000, 24); b.writeUInt32LE(32000, 28); b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(samples.length * 2, 40);
+  samples.forEach((v, i) => b.writeInt16LE(Math.round(Math.max(-1, Math.min(1, v)) * 32767), 44 + i * 2));
+  return b;
+}
+ipcMain.handle('transcribe', async (_e, buffer) => {
+  const audio = new Float32Array(buffer);
+  const key = readKey(VOICE_KEY_FILE());
+  if (!key) {
+    const text = String((await (await asr())(audio, { no_repeat_ngram_size: 3, max_new_tokens: 160 }))?.text || '').trim();
+    return /^(\[.*\]|\(.*\)|you\.?|thank you\.?|thanks for watching!?|\.+)$/i.test(text) ? '' : text;   // Whisper's noises for silence
+  }
   const form = new FormData();
   form.append('model_id', 'scribe_v2');
   form.append('tag_audio_events', 'false');
-  form.append('file', new Blob([Buffer.from(audio)], { type: 'audio/webm' }), 'speech.webm');
-  const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': voiceKey() }, body: form });
+  form.append('file', new Blob([wav(audio)], { type: 'audio/wav' }), 'speech.wav');
+  const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': key }, body: form });
   if (!res.ok) throw new Error(elevenError(res.status, await res.text().catch(() => '')));
   return String((await res.json()).text || '').trim();
 });
@@ -159,15 +175,46 @@ ipcMain.handle('setVoiceKey', async (_e, key) => {
 let waiting = null;   // what the tutor asked last (tutor.js setWaiting)
 ipcMain.on('tutorState', (_e, w) => { waiting = w; });
 const toTutor = (job) => win.webContents.send('tutor', job);
-async function startJob(job) {
+function startJob(job) {
   if (job.kind === 'course') return toTutor({ kind: 'course', lang: job.lang });
   if (job.kind === 'learn') return toTutor(job.lang ? { kind: 'learn', topic: job.topic, lang: job.lang } : { kind: 'pick', topic: job.topic });
   if (job.kind === 'explain') return toTutor({ kind: 'drop', then: 'explain' });
-  const code = await tutorCode.editorCode().catch(() => null);
-  if (!code) return toTutor({ kind: 'drop', then: 'debug', note: "I can't see a code file open in your editor. Drop it here, or paste the program" });
-  tutorCode.allow(code.files);
-  toTutor({ kind: 'debug', ...code });
+  toTutor({ kind: 'screen' });   // debug: home.js looks at the screen, like the button
 }
+// ---------- Hearing "Max" ----------
+// wake.js sends bursts of sound; local Whisper (base.en, ~80 MB, downloaded once into userData/models) checks
+// whether they start with "Max". Nothing leaves the PC. "Max, teach me Rust" goes straight in; "Max" alone opens
+// the panel listening (ElevenLabs) for what comes next. Ported from the full app (app/main.js 'wake').
+const WHISPER_THREADS = Math.max(2, Math.min(4, Math.floor(require('os').cpus().length / 4)));
+let asrP = null;
+function asr() {
+  asrP ||= import('@huggingface/transformers').then(({ pipeline, env }) => {
+    env.cacheDir = path.join(app.getPath('userData'), 'models');
+    return pipeline('automatic-speech-recognition', 'onnx-community/whisper-base.en',
+      { dtype: 'q8', session_options: { intraOpNumThreads: WHISPER_THREADS, interOpNumThreads: 1, enableCpuMemArena: false } });
+  });
+  asrP.catch(() => { asrP = null; });   // offline on the first run, say: try again on the next burst
+  return asrP;
+}
+// The name as Whisper tends to hear it: "Matt, open…", "Mac, next".
+const NAME = "(?:max|max's|matt|mat|mac|macs|mac's|mack|maks|mags|mox|marks|mats)";
+const WAKE = new RegExp(`^\\W*(?:(?:hey|hi|ok|okay|yo)\\W+)?${NAME}\\b\\W*(.*)$`, 'i');
+const NAME_ANYWHERE = new RegExp(`\\b${NAME}\\b`, 'i');
+// sliding: a 2 s window cut from continuous sound, where "Max" can sit anywhere; a quiet-room burst must start with it.
+ipcMain.handle('wake', async (_e, buffer, sliding) => {
+  const audio = new Float32Array(buffer);
+  if (!prefs.wake || audio.length < 16000 * 0.3) return;
+  const whisper = await asr();
+  const head = String((await whisper(audio.slice(0, 16000 * 2), { max_new_tokens: sliding ? 12 : 4 }))?.text || '').trim();
+  if (!(sliding ? NAME_ANYWHERE : WAKE).test(head)) return;
+  const all = !sliding && audio.length > 16000 * 1.8
+    ? String((await whisper(audio, { no_repeat_ngram_size: 3, max_new_tokens: 160 }))?.text || '').trim() : '';
+  const rest = (WAKE.exec(all)?.[1] || '').trim();
+  setMode('panel');
+  if (rest.split(/\s+/).length >= 2) win.webContents.send('wakeWords', rest);
+  else win.webContents.send('listen');
+});
+
 ipcMain.handle('heard', async (_e, text, onScreen) => {
   const tc = onScreen ? tutorCode.command(text, waiting) : null;
   if (tc?.cmd === 'close') return setMode('pet');
@@ -197,7 +244,7 @@ ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 const HIDE = { width: 50, height: 56 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
 const HAND_FOR = 2 * 60 * 1000;
 let win = null, settings = null, mode = 'hide';
-let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', level: 'beginner' };   // theme: system | light (Paper) | dark (Frost)
+let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', talk: 'Control+Alt+Space', wake: true, level: 'beginner' };   // theme: system | light (Paper) | dark (Frost)
 
 let saveTimer = null;
 function savePrefs() {
@@ -264,29 +311,123 @@ ipcMain.on('openSettings', openSettings);
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Settings ----------
-ipcMain.handle('prefs', () => ({ level: prefs.level, call: prefs.call, theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
+ipcMain.handle('prefs', () => ({ wake: prefs.wake, talk: prefs.talk, level: prefs.level, call: prefs.call, theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
 ipcMain.handle('setPref', (_e, name, on) => {
   if (name === 'onTop') { prefs.onTop = !!on; win.setAlwaysOnTop(prefs.onTop); savePrefs(); }
   if (name === 'login') app.setLoginItemSettings({ openAtLogin: !!on });
   if (name === 'theme' && ['system', 'light', 'dark'].includes(on)) { prefs.theme = on; nativeTheme.themeSource = on; savePrefs(); }
   if (name === 'level' && LEVELS[on]) { prefs.level = on; savePrefs(); }
-  if (name === 'call') {
-    if (!bindCall(String(on))) { bindCall(prefs.call); throw new Error("Windows or another app already uses that one. Try another."); }
-    prefs.call = String(on); savePrefs();
+  if (name === 'wake') { prefs.wake = !!on; savePrefs(); win.webContents.send('wakePref', prefs.wake); }
+  if (name === 'call' || name === 'talk') {
+    const other = name === 'call' ? prefs.talk : prefs.call;
+    if (String(on) === other) throw new Error("That's already your other shortcut.");
+    const keys = { call: prefs.call, talk: prefs.talk, [name]: String(on) };
+    if (!bindKeys(keys)) { bindKeys(); throw new Error('Windows or another app already uses that one. Try another.'); }
+    prefs[name] = String(on); savePrefs();
   }
 });
 ipcMain.handle('courses', () => readJSON(COURSES()));
-// The shortcut that calls Max (Settings can change it); pressed again with his panel open, he listens.
-// false if it's taken or not a valid accelerator.
-function bindCall(acc) {
+// The two shortcuts (Settings can change both): Call Max opens his panel (pressed again with it open, he listens);
+// Talk to Max opens it listening. false if one is taken or isn't a valid accelerator.
+function bindKeys({ call, talk } = prefs) {
   globalShortcut.unregisterAll();
-  try { return globalShortcut.register(acc, () => (mode === 'panel' ? win.webContents.send('listen') : setMode('panel'))); } catch { return false; }
+  const bind = (acc, fn) => { if (!acc) return true; try { return globalShortcut.register(acc, fn); } catch { return false; } };
+  return bind(call, () => (mode === 'panel' ? win.webContents.send('listen') : setMode('panel')))
+    && bind(talk, () => { setMode('panel'); win.webContents.send('listen'); });
 }
+
+// ---------- Debugging what's on screen ----------
+// Any app (an editor, a browser, a slide, a PDF, a photo of code): the screen under the mouse is captured with Max
+// hidden, NVIDIA's vision model finds the code, an overlay points at it and asks "Is this it?" (or lets you drag a
+// box around it), then the model reads that part out at full resolution. If the same code is open in an editor,
+// that file is used instead, so fixes can be saved to it.
+async function capture() {
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const others = [win, settings].filter((w) => w && !w.isDestroyed());
+  others.forEach((w) => w.setOpacity(0));
+  await new Promise((r) => setTimeout(r, 180));
+  try {
+    const sf = display.scaleFactor;
+    const sources = await desktopCapturer.getSources({ types: ['screen'],
+      thumbnailSize: { width: Math.round(display.size.width * sf), height: Math.round(display.size.height * sf) } });
+    const src = sources.find((s) => s.display_id === String(display.id)) || sources[0];
+    if (!src || src.thumbnail.isEmpty()) throw new Error("I couldn't capture the screen.");
+    return { display, img: src.thumbnail };
+  } finally { others.forEach((w) => !w.isDestroyed() && w.setOpacity(1)); }
+}
+// The model takes inline images up to ~180 KB: smaller JPEGs until it fits.
+function shrink(img, maxW) {
+  for (let w = Math.min(maxW, img.getSize().width); ; w = Math.round(w * 0.8)) {
+    const im = img.getSize().width > w ? img.resize({ width: w, quality: 'best' }) : img;
+    for (const q of [85, 70, 55]) {
+      const b = im.toJPEG(q);
+      if (b.length < 175000 || w < 400) return { b64: b.toString('base64'), size: im.getSize() };
+    }
+  }
+}
+function json(text) {
+  const m = /\{[\s\S]*\}/.exec(String(text).replace(/```(?:json)?/g, ''));
+  try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
+}
+async function look(prompt, img, maxW, maxTokens) {
+  const key = readKey();
+  if (!key) throw new Error('Add your NVIDIA API key in Settings first.');
+  const { b64, size } = shrink(img, maxW);
+  const text = await ask(key, { model: VL_MODEL, temperature: 0, max_tokens: maxTokens, chat_template_kwargs: { enable_thinking: false },
+    messages: [{ role: 'user', content: [{ type: 'text', text: prompt(size) }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }] }] });
+  return { out: json(text), size };
+}
+// The overlay over that screen: points at box ([x0, y0, x1, y1] in its own coordinates) and asks, or with no box
+// lets you drag one. Resolves { rect } or null (cancelled).
+function pointAt(display, box) {
+  const o = new BrowserWindow({
+    ...display.bounds, frame: false, transparent: true, resizable: false, movable: false, skipTaskbar: true, hasShadow: false,
+    alwaysOnTop: true, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  o.setAlwaysOnTop(true, 'screen-saver');
+  o.loadFile(path.join(__dirname, 'ui', 'point.html'), { query: { box: box ? box.join(',') : '' } });
+  return new Promise((resolve) => {
+    const answer = (e, a) => { if (e.sender === o.webContents) { resolve(a); o.close(); } };
+    ipcMain.on('pointAnswer', answer);
+    o.on('closed', () => { ipcMain.removeListener('pointAnswer', answer); resolve(null); });
+  });
+}
+const EXT = { python: '.py', javascript: '.js', typescript: '.ts', java: '.java', c: '.c', 'c++': '.cpp', 'c#': '.cs', go: '.go', rust: '.rs',
+  html: '.html', css: '.css', sql: '.sql', php: '.php', ruby: '.rb', kotlin: '.kt', swift: '.swift', bash: '.sh', powershell: '.ps1' };
+ipcMain.handle('screenCode', async () => {
+  const { display, img } = await capture();
+  const W = display.size.width, H = display.size.height;
+  const found = await look(({ width, height }) => `This is a ${width}x${height} pixel screenshot. Find the source code on it: in a code editor, terminal, browser, slide, document, chat or a photo, anywhere. If there are several, pick the biggest block of code. Reply with only JSON: {"found":true,"box":[left,top,right,bottom],"lang":"Python"}, the box in pixels of this image, tight around the code itself (not the whole window). If there is no code on screen, reply {"found":false}.`,
+    img, 1280, 300).catch(() => null);
+  let box = null;
+  if (found?.out?.found && Array.isArray(found.out.box) && found.out.box.length === 4) {
+    const k = W / found.size.width;
+    const [x0, y0, x1, y1] = found.out.box.map((v) => Math.round(Number(v) * k));
+    if (x1 - x0 > 30 && y1 - y0 > 15) box = [Math.max(0, x0), Math.max(0, y0), Math.min(W, x1), Math.min(H, y1)];
+  }
+  if (box) win.webContents.send('say', 'Is this the code?');
+  const answer = await pointAt(display, box);
+  if (!answer) return null;
+  const f = img.getSize().width / W, pad = 8;
+  const [x0, y0, x1, y1] = answer.rect;
+  const crop = img.crop({ x: Math.max(0, Math.round(x0 * f) - pad), y: Math.max(0, Math.round(y0 * f) - pad),
+    width: Math.min(img.getSize().width, Math.round((x1 - x0) * f) + 2 * pad), height: Math.min(img.getSize().height, Math.round((y1 - y0) * f) + 2 * pad) });
+  const { out } = await look(() => 'Transcribe the source code in this image exactly as written: every line, the same indentation, no line numbers, nothing fixed or added. Reply with only JSON: {"lang":"Python","code":"the code"}. If there is no code, reply {"code":""}.',
+    crop, 1800, 8000);
+  const code = String(out?.code || '').replace(/\r/g, '');
+  if (!code.trim()) throw new Error("I couldn't read any code there. Try dragging a box around it.");
+  const lang = String(out?.lang || found?.out?.lang || '');
+  // The same code open in an editor: use that file, so fixes can be saved to it.
+  const ed = await tutorCode.editorCode().catch(() => null);
+  const line = code.split('\n').map((s) => s.trim()).find((s) => s.length > 10);
+  if (ed && line && ed.files[0]?.code.includes(line)) { tutorCode.allow(ed.files); return ed; }
+  return { files: [{ name: `on screen${EXT[lang.toLowerCase()] || ''}`, code }] };
+});
 
 function openSettings() {
   if (settings && !settings.isDestroyed()) return settings.focus();
   settings = new BrowserWindow({
-    width: 380, height: 420, useContentSize: true, resizable: false, maximizable: false, minimizable: false,
+    width: 340, height: 300, useContentSize: true, resizable: false, maximizable: false, minimizable: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1e28' : '#fbfaf7', title: 'Max Code settings',
     icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
@@ -295,8 +436,8 @@ function openSettings() {
   settings.loadFile(path.join(__dirname, 'ui', 'settings.html'));
   // Exactly as tall as what's in it.
   settings.webContents.on('did-finish-load', async () => {
-    const h = await settings.webContents.executeJavaScript("document.querySelector('.homebox').offsetHeight + 24");
-    settings.setContentSize(380, Math.min(Math.ceil(h), screen.getPrimaryDisplay().workArea.height - 60));
+    const h = await settings.webContents.executeJavaScript("document.querySelector('.homebox').offsetHeight + 30");
+    settings.setContentSize(340, Math.min(Math.ceil(h), screen.getPrimaryDisplay().workArea.height - 60));
   });
   settings.on('closed', () => { if (win && !win.isDestroyed()) win.webContents.send('keyChanged'); });
 }
@@ -307,14 +448,15 @@ function open() {
   win = new BrowserWindow({
     ...hideBounds(), frame: false, transparent: true, resizable: false, maximizable: false, skipTaskbar: true,
     hasShadow: false, alwaysOnTop: prefs.onTop, title: 'Max Code', icon: path.join(__dirname, 'assets', 'icon.png'), show: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.once('ready-to-show', () => {
     win.show();
     if (!readKey()) { setMode('pet'); openSettings(); } else handTimer = setTimeout(() => win.hide(), HAND_FOR);
   });
-  bindCall(prefs.call);
+  bindKeys();
+  if (prefs.wake) setTimeout(() => asr().catch(() => {}), 5000);   // warm Whisper up (downloads it the first time)
   win.on('moved', rememberCorner);   // dragged by the panel's title bar
 }
 // Links open in the browser, never inside the app (both windows).

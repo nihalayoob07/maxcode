@@ -1,0 +1,24 @@
+/* The overlay that points at the code Max found (point.js), in the panel's colours (tutor.css). */
+html, body { background: transparent; overflow: hidden; }
+body { display: block; cursor: default; user-select: none; }
+body.select { cursor: crosshair; background: rgba(0, 0, 0, 0.35); }
+.hole {
+  position: fixed; border: 3px dashed var(--blue-text); border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35); animation: glow 1.2s ease-in-out infinite alternate;
+}
+body.select .hole { animation: none; border-style: solid; }
+@keyframes glow { to { border-color: var(--rose); } }
+.pointer {
+  position: fixed; width: 54px; height: 54px; fill: #fff; stroke: #161616; stroke-width: 1.4; stroke-linejoin: round;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+  transition: left 0.9s cubic-bezier(0.2, 0.9, 0.3, 1), top 0.9s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.pointer.tap { animation: tap 0.6s ease-in-out 3; }
+@keyframes tap { 50% { transform: translate(-4px, -4px); } }
+.ask, .banner {
+  position: fixed; background: var(--solid); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 12px 14px; font: 400 15px var(--display);
+}
+.ask b { display: block; font-size: 16px; font-weight: 600; }
+.ask .acts { margin-top: 10px; }
+.banner { left: 50%; top: 24px; transform: translateX(-50%); }

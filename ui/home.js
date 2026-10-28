@@ -3,6 +3,8 @@
 // tutor's own functions (lesson, pick, openCourse, debug, showDrop).
 'use strict';
 (() => {
+  const clean = (e) => String(e?.message || e).replace(/^Error invoking remote method '\w+': (Error: )?/, '');
+  const COMMON = ['Python', 'JavaScript', 'HTML', 'CSS', 'Java', 'C', 'C++', 'C#', 'SQL'];
   const COURSES = ['Python', 'JavaScript', 'TypeScript', 'HTML', 'CSS', 'SQL', 'Java', 'C', 'C++', 'C#', 'Go', 'Rust', 'Kotlin', 'Swift', 'Dart', 'PHP', 'Ruby', 'Bash', 'PowerShell', 'Lua', 'Perl', 'R', 'MATLAB', 'Julia', 'Scala', 'Haskell', 'Elixir', 'Erlang', 'Clojure', 'F#', 'OCaml', 'Lisp', 'Objective-C', 'Assembly', 'Zig', 'Fortran', 'COBOL', 'Visual Basic', 'Pascal', 'Solidity', 'Groovy', 'Prolog', 'Ada'];
 
   // Title bar: Home, the mic (voice.js) and mute; keep-on-top is a setting; close puts Max back to sitting.
@@ -22,7 +24,7 @@
       <h1>What do you want to do?</h1>
       <input id="askHome" placeholder="Ask anything, e.g. how do pointers work in C" autocomplete="off" spellcheck="false">
       <div class="grid">
-        <button class="card" data-go="editor"><b>Debug my code</b><span>The file open in VS Code, Cursor or Windsurf</span></button>
+        <button class="card" data-go="editor"><b>Debug my code</b><span>Whatever code is on your screen, in any app</span></button>
         <button class="card" data-go="debug"><b>Debug a file</b><span>Drop a file or paste a program</span></button>
         <button class="card" data-go="explain"><b>Explain code</b><span>Walk through a program line by line</span></button>
         <button class="card" data-go="courses"><b>Courses</b><span>Learn a language lesson by lesson</span></button>
@@ -33,7 +35,7 @@
       <a href="#" class="small back" id="coursesBack">← Back</a>
       <h1>Courses</h1>
       <p>Max teaches a language lesson by lesson. Progress is saved on this PC.</p>
-      <input id="courseFilter" placeholder="Find a language" autocomplete="off" spellcheck="false">
+      <input id="courseFilter" placeholder="Search all 43 languages" autocomplete="off" spellcheck="false">
       <div class="courses" id="courses"></div>
     </div>
   </section>`);
@@ -58,31 +60,44 @@
       b.append(Object.assign(document.createElement('b'), { textContent: lang }),
         Object.assign(document.createElement('span'), { textContent: total ? `${done} / ${total} done` : 'Not started' }));
       b.onclick = () => { leave(); openCourse(lang); };
+      b.dataset.common = COMMON.includes(lang) || total ? '1' : '';
       return b;
     }));
     $('#start').hidden = $('#nokey').hidden = true;
     $('#courseBox').hidden = false;
     $('#courseFilter').value = '';
+    filter();
     $('#courseFilter').focus();
   }
-  $('#courseFilter').addEventListener('input', (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    for (const b of $('#courses').children) b.hidden = !b.firstChild.textContent.toLowerCase().includes(q);
-  });
+  // The common languages (and any you've started) show; the rest come up when you search.
+  function filter() {
+    const q = $('#courseFilter').value.trim().toLowerCase();
+    for (const b of $('#courses').children) b.hidden = q ? !b.firstChild.textContent.toLowerCase().includes(q) : !b.dataset.common;
+  }
+  $('#courseFilter').addEventListener('input', filter);
   $('#coursesBack').onclick = (e) => { e.preventDefault(); home(); };
 
   async function go(what) {
     if (what === 'courses') return courses();
     leave();
     if (what === 'debug' || what === 'explain') return showDrop(what);
-    const code = await window.max.editorCode();
-    if (!code) return showDrop('debug', "I can't see a code file open in your editor. Drop it here, or paste the program");
+    // Debug my code: Max finds the code on the screen and asks if that's it (main.js screenCode).
+    reset(null); render();
+    busy('Max is looking at your screen');
+    let code;
+    try { code = await window.max.screenCode(); } catch (e) { busy(null); return task(clean(e), 'bad'); }
+    busy(null);
+    if (!code) return home();   // cancelled
     debug(code.files, code);
   }
   // A typed request goes where the spoken one would in the full app (tutor.js intent()).
   async function request(text) {
     text = text.trim();
     if (!text) return;
+    if (/^\W*(?:hi|hello|hey|yo|sup|hiya|howdy)\b[\s\w,!.']{0,10}$/i.test(text)) {   // just a hello
+      document.dispatchEvent(new Event('maxwave'));
+      return say('Hi! What are we coding today?');
+    }
     const job = await window.max.intent(text);
     leave();
     if (job?.kind === 'course') return openCourse(job.lang);
@@ -109,7 +124,7 @@
 
   // Opening the panel, or closing Settings (the key may have just been added), refreshes the menu.
   const refresh = () => { if (!$('#home').hidden) home(); };
-  window.max.onTutor(leave);   // a spoken request (main.js) opens on the tutor page
+  window.max.onTutor((job) => (job.kind === 'screen' ? go('editor') : leave()));   // a spoken request (main.js)
   window.max.onMode((m) => { if (m === 'panel') refresh(); });
   window.max.onKeyChanged(refresh);
 

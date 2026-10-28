@@ -6,13 +6,13 @@ Max hides under the bottom of your screen with just a raised hand peeking out fo
 
 He dresses for the time of day: pyjamas and a nightcap at night (with zzz after midnight), droopy eyes, yawns and coffee early in the morning, sneaky bites of a sandwich at lunch, a backwards cap at weekends, and a witch hat and pumpkin for Halloween, a Santa hat at Christmas and a party hat at New Year. He jumps and sparkles when a bug gets fixed or you get a practice answer right. The schedule is in `ui/costume.js` (`node ui/costume.js` checks it). He looks at his laptop while he's thinking.
 
-- **Debug my code**: reads the file open in VS Code, Cursor or Windsurf, finds the bugs, and applies the fixes you accept.
+- **Debug my code**: finds the code on your screen in any app (an editor, a browser, a slide, a PDF), points at it and asks "Is this the code?" (or lets you drag a box around it), then finds the bugs. If that code is open in VS Code, Cursor or Windsurf, he can apply the fixes you accept.
 - **Debug a file / Explain code**: drop a file or paste a program.
 - **Ask anything**: "how do pointers work in C" gives a lesson with an example you can step through.
-- **Courses** (in his panel): 43 languages, from HTML, CSS, JavaScript, Python and SQL to Rust, Haskell, COBOL and Assembly, with a search box. Progress is saved on the PC.
-- **Talk to him**: click the mic in his panel (or press the call shortcut again while it's open) and speak; he answers out loud. Voice in and out is ElevenLabs, with your own key (optional: without it he types).
+- **Courses** (in his panel): the common languages up front, and 43 in all (Rust, Haskell, COBOL, Assembly…) through the search box. Progress is saved on the PC.
+- **Talk to him**: say "Max" ("Max, teach me Rust"), press **Ctrl+Alt+Space**, or click the mic. Listening runs on your PC with a small speech model that downloads itself the first time; no key needed. He answers out loud with an ElevenLabs key (optional).
 - **Your level**: Beginner, Intermediate or Expert in Settings. Beginners get plain words and the simplest examples; experts get terse, precise answers with edge cases.
-- **Settings** (a normal window): the NVIDIA key, the call shortcut, theme, keep Max on top, start with Windows.
+- **Settings** (three small tabs): General (level, theme, call shortcut, keep on top, start with Windows), Voice ("Max" on/off, talk shortcut), Keys.
 - **Looks**: light theme is Paper (warm white, black ink); dark theme is Frost (translucent slate glass). It follows Windows unless you pick one in Settings.
 
 It needs internet: answers come from NVIDIA Nemotron on build.nvidia.com, using the user's own key. The key is stored encrypted on the PC (Windows DPAPI) and only ever sent to NVIDIA.

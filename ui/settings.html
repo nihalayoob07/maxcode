@@ -11,37 +11,42 @@
 <body>
   <section class="home">
     <div class="homebox">
-      <h2>NVIDIA API key</h2>
-      <ol id="keySteps">
-        <li><a href="#" id="getKey">Open NVIDIA's key page</a> and sign in (free).</li>
-        <li>Click <b>Generate API Key</b>, copy it, paste it here.</li>
-      </ol>
-      <div class="row">
-        <input id="key" type="password" placeholder="nvapi-…" autocomplete="off" spellcheck="false">
-        <button class="btn p" id="saveKey">Save</button>
+      <nav class="menu" role="tablist">
+        <button role="tab" data-tab="general">General</button>
+        <button role="tab" data-tab="voice">Voice</button>
+        <button role="tab" data-tab="keys">Keys</button>
+      </nav>
+      <div class="panes">
+        <div class="pane" data-pane="general">
+          <label class="opt">Your level <select id="level"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="expert">Expert</option></select></label>
+          <label class="opt">Theme <select id="theme"><option value="system">Same as Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <label class="opt">Call Max <input id="call" class="keys" readonly title="Click, then press the keys you want"></label>
+          <div class="msg" id="callMsg"></div>
+          <label class="opt"><input type="checkbox" id="onTop"> Keep on top of other windows</label>
+          <label class="opt"><input type="checkbox" id="login"> Start with Windows</label>
+          <button class="btn" id="quit">Quit Max Code</button>
+        </div>
+        <div class="pane" data-pane="voice">
+          <label class="opt"><input type="checkbox" id="wake"> Answer when I say “Max”</label>
+          <label class="opt">Talk to Max <input id="talk" class="keys" readonly title="Click, then press the keys you want"></label>
+          <div class="msg" id="talkMsg"></div>
+          <p class="aside">Max hears you on this PC; nothing you say leaves it unless you add an ElevenLabs key.</p>
+        </div>
+        <div class="pane" data-pane="keys">
+          <label class="lab">NVIDIA API key <a href="#" id="getKey">get one free</a></label>
+          <div class="row">
+            <input id="key" type="password" placeholder="nvapi-…" autocomplete="off" spellcheck="false">
+            <button class="btn p" id="saveKey">Save</button>
+          </div>
+          <div class="msg" id="keyMsg"></div>
+          <label class="lab">ElevenLabs key <span>(optional)</span> <a href="#" id="getVoiceKey">get one</a></label>
+          <div class="row">
+            <input id="voiceKey" type="password" placeholder="sk_…" autocomplete="off" spellcheck="false">
+            <button class="btn p" id="saveVoiceKey">Save</button>
+          </div>
+          <div class="msg" id="voiceMsg"></div>
+        </div>
       </div>
-      <div class="msg" id="keyMsg"></div>
-
-      <h2>ElevenLabs key <span class="opt-note">(voice, optional)</span></h2>
-      <ol id="voiceSteps">
-        <li><a href="#" id="getVoiceKey">Open ElevenLabs' key page</a> (a free account works).</li>
-        <li>Create a key with <b>Text to Speech</b> and <b>Speech to Text</b> on, paste it here.</li>
-      </ol>
-      <div class="row">
-        <input id="voiceKey" type="password" placeholder="sk_…" autocomplete="off" spellcheck="false">
-        <button class="btn p" id="saveVoiceKey">Save</button>
-      </div>
-      <div class="msg" id="voiceMsg"></div>
-
-      <h2>Max</h2>
-      <label class="opt">Your level <select id="level"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="expert">Expert</option></select></label>
-      <label class="opt">Call Max <input id="call" class="keys" readonly title="Click, then press the keys you want. Press it again with the panel open to talk."></label>
-      <div class="msg" id="callMsg"></div>
-      <label class="opt">Theme <select id="theme"><option value="system">Same as Windows</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-      <label class="opt"><input type="checkbox" id="onTop"> Keep on top of other windows</label>
-      <label class="opt"><input type="checkbox" id="login"> Start with Windows</label>
-
-      <button class="btn" id="quit">Quit Max Code</button>
     </div>
   </section>
   <script src="settings.js"></script>

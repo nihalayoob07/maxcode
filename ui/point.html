@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>Is this the code?</title>
+  <link rel="stylesheet" href="tutor.css">
+  <link rel="stylesheet" href="point.css">
+</head>
+<body>
+  <div class="hole" id="hole" hidden></div>
+  <svg class="pointer" id="pointer" viewBox="0 0 24 24" hidden aria-hidden="true"><path d="M4 2.5 20 13l-7.2 1.2L9.5 21z"/></svg>
+  <div class="ask" id="ask" hidden>
+    <b>Is this the code?</b>
+    <div class="acts"><button class="btn" id="no">No, I'll show you</button><button class="btn p" id="yes">Yes</button></div>
+  </div>
+  <div class="banner" id="banner" hidden>Drag a box around the code · Esc to cancel</div>
+  <script src="point.js"></script>
+</body>
+</html>

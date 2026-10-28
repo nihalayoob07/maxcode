@@ -4,12 +4,20 @@
   const $ = (s) => document.querySelector(s);
   const clean = (e) => String(e?.message || e).replace(/^Error invoking remote method '\w+': (Error: )?/, '');
 
+  // ---------- The tabs: General, Voice, Keys. The window is as tall as the tallest one (main.js), so it never jumps. ----------
+  function tab(name) {
+    for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === name);
+    for (const p of document.querySelectorAll('[data-pane]')) p.hidden = p.dataset.pane !== name;
+  }
+  for (const b of document.querySelectorAll('[data-tab]')) b.onclick = () => tab(b.dataset.tab);
+  $('.panes').style.minHeight = `${Math.max(...[...document.querySelectorAll('[data-pane]')].map((p) => p.offsetHeight))}px`;
+  tab('general');
+
   // ---------- The key ----------
   async function keyState() {
     const has = await window.max.hasKey();
-    $('#keySteps').hidden = has;
-    $('#keyMsg').textContent = has ? 'Saved, encrypted on this PC. Paste a new one to replace it.' : 'Stays on this PC, encrypted; only sent to NVIDIA.';
-    if (!has) $('#key').focus();
+    $('#keyMsg').textContent = has ? 'Saved. Paste a new one to replace it.' : 'Needed for Max to answer. Kept encrypted on this PC.';
+    if (!has) tab('keys');
   }
   $('#getKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage(); };
   async function saveKey() {
@@ -33,9 +41,8 @@
   // ---------- The ElevenLabs key (Max's voice and ears) ----------
   async function voiceState() {
     const has = await window.max.hasVoiceKey();
-    $('#voiceSteps').hidden = has;
     $('#voiceMsg').className = 'msg';
-    $('#voiceMsg').textContent = has ? 'Saved. Click the mic in Max\'s panel, or press Call Max twice, to talk.' : 'Without it Max only types.';
+    $('#voiceMsg').textContent = has ? 'Saved: Max talks in his ElevenLabs voice.' : 'For Max\'s spoken voice.';
   }
   $('#getVoiceKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage('voice'); };
   async function saveVoiceKey() {
@@ -55,9 +62,8 @@
   $('#saveVoiceKey').onclick = saveVoiceKey;
   $('#voiceKey').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveVoiceKey(); });
 
-  // ---------- The call shortcut: click the box, press the keys ----------
+  // ---------- The shortcuts: click the box, press the keys ----------
   const pretty = (acc) => acc.replace('Control', 'Ctrl').replace('Super', 'Win').replace(/\+/g, ' + ');
-  let call = '';
   // An Electron accelerator from a key press, or '' while only modifiers are held.
   function accelerator(e) {
     const key = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5)
@@ -66,31 +72,37 @@
     if (!key || (!mods.length && !/^F\d/.test(key))) return '';   // a bare letter would fire while typing anywhere
     return [...mods, key].join('+');
   }
-  const box = $('#call'), callMsg = $('#callMsg');
-  box.addEventListener('focus', () => { box.value = 'Press the keys…'; callMsg.className = 'msg'; callMsg.textContent = 'Esc to cancel'; });
-  box.addEventListener('blur', () => { box.value = pretty(call); if (!callMsg.classList.contains('bad')) callMsg.textContent = ''; });
-  box.addEventListener('keydown', async (e) => {
-    e.preventDefault();
-    if (e.key === 'Escape') return box.blur();
-    const acc = accelerator(e);
-    if (!acc) return;
-    try {
-      await window.max.setPref('call', acc);
-      call = acc;
-      callMsg.className = 'msg';
+  const keys = {};   // pref -> its accelerator now
+  function keyBox(pref) {
+    const box = $(`#${pref}`), msg = $(`#${pref}Msg`);
+    box.addEventListener('focus', () => { box.value = 'Press the keys…'; msg.className = 'msg'; msg.textContent = 'Esc to cancel'; });
+    box.addEventListener('blur', () => { box.value = pretty(keys[pref] || ''); if (!msg.classList.contains('bad')) msg.textContent = ''; });
+    box.addEventListener('keydown', async (e) => {
+      e.preventDefault();
+      if (e.key === 'Escape') return box.blur();
+      const acc = accelerator(e);
+      if (!acc) return;
+      try {
+        await window.max.setPref(pref, acc);
+        keys[pref] = acc;
+        msg.className = 'msg';
+      } catch (err) {
+        msg.className = 'msg bad';
+        msg.textContent = clean(err);
+      }
       box.blur();
-    } catch (err) {
-      callMsg.className = 'msg bad';
-      callMsg.textContent = clean(err);
-      box.blur();
-    }
-  });
+    });
+  }
+  keyBox('call');
+  keyBox('talk');
 
   // ---------- Options ----------
   (async () => {
     const p = await window.max.prefs();
-    call = p.call;
-    box.value = pretty(call);
+    keys.call = p.call; keys.talk = p.talk;
+    $('#call').value = pretty(p.call);
+    $('#talk').value = pretty(p.talk);
+    $('#wake').checked = p.wake;
     $('#onTop').checked = p.onTop;
     $('#login').checked = p.login;
     $('#theme').value = p.theme;
@@ -100,6 +112,7 @@
   $('#login').onchange = (e) => window.max.setPref('login', e.target.checked);
   $('#theme').onchange = (e) => window.max.setPref('theme', e.target.value);
   $('#level').onchange = (e) => window.max.setPref('level', e.target.value);
+  $('#wake').onchange = (e) => window.max.setPref('wake', e.target.checked);
   $('#quit').onclick = () => window.max.quit();
 
   keyState();

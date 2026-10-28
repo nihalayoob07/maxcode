@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld('max', {
   transcribe: (audio) => ipcRenderer.invoke('transcribe', audio),
   heard: (text, onScreen) => ipcRenderer.invoke('heard', text, onScreen),
   onListen: (fn) => ipcRenderer.on('listen', () => fn()),
+  onWakeWords: (fn) => ipcRenderer.on('wakeWords', (_e, text) => fn(text)),
+  onWakePref: (fn) => ipcRenderer.on('wakePref', (_e, on) => fn(on)),
+  wake: (audio, sliding) => ipcRenderer.invoke('wake', audio, !!sliding),
+  onSay: (fn) => ipcRenderer.on('say', (_e, text) => fn(text)),
+  screenCode: () => ipcRenderer.invoke('screenCode'),
+  pointAnswer: (a) => ipcRenderer.send('pointAnswer', a),
   intent: (text) => ipcRenderer.invoke('intent', text),
   editorCode: () => ipcRenderer.invoke('editorCode'),
   // The chibi and the settings window
