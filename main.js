@@ -337,6 +337,21 @@ ipcMain.on('petMenu', () => Menu.buildFromTemplate([
   { label: 'Quit Max Code', click: () => app.quit() },
 ]).popup({ window: win }));
 ipcMain.on('openSettings', openSettings);
+// With the panel open the window is a see-through rectangle bigger than the panel and Max: over its empty parts, clicks
+// go to whatever is behind it. Checked from the mouse position (the page's forwarded mouse moves aren't reliable on
+// Windows); the panel sits 10 px in from the top and sides and ends 134 px up (pet.css), Max is the bottom-right 120x130.
+let through = false;
+setInterval(() => {
+  if (!win || win.isDestroyed()) return;
+  let want = false;
+  if (mode === 'panel') {
+    const p = screen.getCursorScreenPoint(), b = win.getBounds(), x = p.x - b.x, y = p.y - b.y;
+    const panel = x >= 10 && x <= b.width - 10 && y >= 10 && y <= b.height - 134;
+    const max = x >= b.width - 120 && y >= b.height - 130;
+    want = !panel && !max;
+  }
+  if (want !== through) { through = want; win.setIgnoreMouseEvents(want); }
+}, 100);
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Settings ----------
