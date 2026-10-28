@@ -2,13 +2,14 @@
 
 Max's coding tutor and debugger as its own Windows app. No server, no setup: install it, paste a free NVIDIA API key once, and go.
 
-Max hides under the bottom of your screen with just a raised hand peeking out. Click the hand or press **Ctrl+Alt+M** and he pops up as a small chibi (curly hair, glasses, laptop). Click him to open his panel, drag him anywhere, right-click for Settings or Quit. After 5 idle minutes he hides again. He looks at his laptop while he's thinking.
+Max hides under the bottom of your screen with just a raised hand peeking out for 2 minutes, then out of sight. Click the hand, or press **Ctrl+Alt+M** any time, and he pops up as a small chibi (curly hair, glasses, laptop). Click him to open his panel, drag him anywhere, right-click for Settings or Quit. After 5 idle minutes he hides again. He looks at his laptop while he's thinking.
 
 - **Debug my code**: reads the file open in VS Code, Cursor or Windsurf, finds the bugs, and applies the fixes you accept.
 - **Debug a file / Explain code**: drop a file or paste a program.
 - **Ask anything**: "how do pointers work in C" gives a lesson with an example you can step through.
 - **Courses** (in Settings): C, C++, Python, Java, JavaScript, C#, Go, Rust. Progress is saved on the PC.
-- **Settings** (a normal window): the NVIDIA key, courses, keep Max on top, start with Windows.
+- **Settings** (a normal window): the NVIDIA key, courses, theme, keep Max on top, start with Windows.
+- **Looks**: light theme is Paper (warm white, black ink); dark theme is Frost (translucent slate glass). It follows Windows unless you pick one in Settings.
 
 It needs internet: answers come from NVIDIA Nemotron on build.nvidia.com, using the user's own key. The key is stored encrypted on the PC (Windows DPAPI) and only ever sent to NVIDIA.
 

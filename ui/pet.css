@@ -2,8 +2,8 @@
 html, body { background: transparent; }
 body { display: block; position: relative; }
 #panel {
-  position: absolute; left: 0; top: 0; right: 0; bottom: 116px; display: flex; flex-direction: column;
-  background: var(--bg); border: 1px solid var(--line-strong); border-radius: 14px; overflow: hidden;
+  position: absolute; left: 10px; top: 10px; right: 10px; bottom: 116px; display: flex; flex-direction: column;
+  background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
   transform: translateZ(0);   /* fixed children (home, drop box) are placed inside the panel */
 }
 body.pet #panel { display: none; }
@@ -33,7 +33,6 @@ body.pet #panel { display: none; }
 #panel .home { padding: 20px 16px; }
 #panel .home h1 { font-size: 22px; }
 #panel .home .grid { grid-template-columns: 1fr; }
-#panel .home .card b { font-size: 16px; }
 
 /* Hiding: only the raised hand, peeking up from the bottom of the screen */
 #hand { display: none; position: absolute; inset: 0; cursor: pointer; }

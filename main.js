@@ -82,13 +82,14 @@ ipcMain.handle('tutorSave', (_e, fix) => tutorCode.applyFix(fix));
 ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 
 // ---------- The window ----------
-// Max hides under the bottom of the screen with just a raised hand peeking out (hide). Clicking the hand, or the
-// shortcut, calls him up as a small chibi (pet); clicking him opens the tutor as a panel above him: the window grows
+// Max hides under the bottom of the screen with just a raised hand peeking out (hide); after 2 minutes the hand goes
+// too and the window is hidden. Clicking the hand, or the shortcut, calls him up as a small chibi (pet); clicking him opens the tutor as a panel above him: the window grows
 // up and to the left from its bottom-right corner, so he stays where he was. Settings is its own, big window.
 const HIDE = { width: 50, height: 56 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
 const CALL = 'Control+Alt+M';
+const HAND_FOR = 2 * 60 * 1000;
 let win = null, settings = null, mode = 'hide';
-let prefs = { onTop: true };
+let prefs = { onTop: true, theme: 'system' };   // theme: system | light (Paper) | dark (Frost)
 
 let saveTimer = null;
 function savePrefs() {
@@ -112,14 +113,18 @@ function hideBounds() {
   const x = Math.max(area.x, Math.min(pet.x + (PET.width - HIDE.width) / 2, area.x + area.width - HIDE.width));
   return { x: Math.round(x), y: area.y + area.height - HIDE.height, ...HIDE };
 }
-let sinkTimer = null;
+let sinkTimer = null, handTimer = null;
 function setMode(m) {
   if (m === mode) return;
-  clearTimeout(sinkTimer);
+  clearTimeout(sinkTimer); clearTimeout(handTimer);
   mode = m;
+  if (!win.isVisible()) win.show();
   win.webContents.send('mode', m);
   // He sinks (pet.css) before the window shrinks to the hand; rising, the window grows first.
-  if (m === 'hide') sinkTimer = setTimeout(() => win.setBounds(hideBounds()), 380);
+  if (m === 'hide') {
+    sinkTimer = setTimeout(() => win.setBounds(hideBounds()), 380);
+    handTimer = setTimeout(() => win.hide(), HAND_FOR);   // only the shortcut (or opening the app again) calls him now
+  }
   else win.setBounds(boundsFor(m === 'panel' ? PANEL : PET));
   if (m === 'panel') win.focus();
 }
@@ -151,10 +156,11 @@ ipcMain.on('openSettings', openSettings);
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Settings ----------
-ipcMain.handle('prefs', () => ({ call: 'Ctrl+Alt+M', onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
+ipcMain.handle('prefs', () => ({ theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
 ipcMain.handle('setPref', (_e, name, on) => {
   if (name === 'onTop') { prefs.onTop = !!on; win.setAlwaysOnTop(prefs.onTop); savePrefs(); }
   if (name === 'login') app.setLoginItemSettings({ openAtLogin: !!on });
+  if (name === 'theme' && ['system', 'light', 'dark'].includes(on)) { prefs.theme = on; nativeTheme.themeSource = on; savePrefs(); }
 });
 ipcMain.handle('courses', () => readJSON(COURSES()));
 ipcMain.on('startCourse', (_e, lang) => {
@@ -165,7 +171,7 @@ ipcMain.on('startCourse', (_e, lang) => {
 function openSettings() {
   if (settings && !settings.isDestroyed()) return settings.focus();
   settings = new BrowserWindow({
-    width: 760, height: 720, minWidth: 520, minHeight: 480, backgroundColor: '#0a0a0a', title: 'Max Code settings',
+    width: 760, height: 720, minWidth: 520, minHeight: 480, backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1e28' : '#fbfaf7', title: 'Max Code settings',
     icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
@@ -176,7 +182,7 @@ function openSettings() {
 
 function open() {
   prefs = { ...prefs, ...readJSON(PREFS()) };
-  nativeTheme.themeSource = 'dark';
+  nativeTheme.themeSource = prefs.theme;
   win = new BrowserWindow({
     ...hideBounds(), frame: false, transparent: true, resizable: false, maximizable: false, skipTaskbar: true,
     hasShadow: false, alwaysOnTop: prefs.onTop, title: 'Max Code', icon: path.join(__dirname, 'assets', 'icon.png'), show: false,
@@ -185,7 +191,7 @@ function open() {
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.once('ready-to-show', () => {
     win.show();
-    if (!readKey()) { setMode('pet'); openSettings(); }
+    if (!readKey()) { setMode('pet'); openSettings(); } else handTimer = setTimeout(() => win.hide(), HAND_FOR);
   });
   globalShortcut.register(CALL, () => setMode('panel'));
   win.on('moved', rememberCorner);   // dragged by the panel's title bar

@@ -1,28 +1,37 @@
-/* Max Code's home screen (home.js), in the tutor's colours (tutor.css). */
+/* Max Code's menu (home.js) and the settings window: Paper in light mode, Frost in dark (colours in tutor.css). */
 .home { position: fixed; inset: 41px 0 0; background: var(--bg); overflow: auto; display: flex; justify-content: center; padding: 48px 24px; z-index: 5; }
 .homebox { width: 100%; max-width: 640px; }
-.home h1 { font-size: 30px; font-weight: 700; margin: 0 0 12px; }
-.home h2 { font-size: 15px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin: 32px 0 10px; }
+.home h1 { font-size: 26px; font-weight: 600; margin: 0 0 14px; }
+.home h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 32px 0 10px; }
 .home p, .home ol { color: var(--muted); margin: 0 0 16px; }
 .home ol { padding-left: 22px; }
 .home li { margin: 4px 0; }
-.home a { color: var(--blue-text); }
+.home a { color: var(--text); text-underline-offset: 3px; }
 .home input {
-  width: 100%; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; color: var(--text);
-  font: 400 15px var(--mono); padding: 10px 12px;
+  width: 100%; background: transparent; border: 0; border-bottom: 1px solid var(--text); border-radius: 0; color: var(--text);
+  font: 400 15px var(--display); padding: 10px 0;
 }
-.home input:focus { border-color: var(--blue-text); }
-.home .row { display: flex; gap: 8px; }
-.home .row .btn { padding: 0 20px; }
-.home .msg { color: var(--muted); font-size: 14px; margin-top: 8px; }
+.home .row { display: flex; gap: 8px; align-items: center; }
+.home .row .btn { padding: 6px 20px; }
+.home .msg { color: var(--muted); font-size: 13px; margin-top: 8px; }
 .home .msg.bad { color: var(--red); }
-.home .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 16px; }
+.home .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 16px; margin-top: 12px; }
 .home .card {
-  text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px;
-  display: flex; flex-direction: column; gap: 4px;
+  text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0;
+  display: flex; flex-direction: column; gap: 2px;
 }
-.home .card:hover { border-color: var(--rose); }
-.home .card b { font-size: 18px; }
-.home .card span { color: var(--muted); font-size: 14px; }
+.home .card b { font-size: 16px; font-weight: 600; }
+.home .card b::after { content: ' →'; color: var(--muted); }
+.home .card:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.home .card span { color: var(--muted); font-size: 13px; }
 .home .acts { display: flex; flex-wrap: wrap; gap: 8px; }
-.home .small { display: inline-block; margin-top: 32px; font-size: 14px; color: var(--muted); }
+.home .small { display: inline-block; margin-top: 32px; font-size: 13px; color: var(--muted); }
+
+@media (prefers-color-scheme: dark) {
+  .home input { background: var(--surface); border-radius: 8px; border-bottom: 2px solid var(--blue-text); padding: 10px 12px; }
+  .home .grid { gap: 6px; }
+  .home .card { background: var(--surface); border: 0; border-radius: 10px; padding: 12px 14px; }
+  .home .card b::after { content: none; }
+  .home .card:hover { background: var(--surface-2); }
+  .home .card:hover b { text-decoration: none; }
+}

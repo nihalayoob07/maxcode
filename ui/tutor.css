@@ -1,28 +1,60 @@
 /* Max's code tutor window: the HUD's black, cerulean and rose around a code view in VS Code's Dark+ colours.
    Max's note opens under the line the arrow points at; Previous / Next sit at its bottom right. */
 :root {
-  --bg: #0a0a0a;
-  --surface: #121314;
-  --surface-2: #1a1b1d;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.16);
-  --text: #ededee;
-  --muted: #8b9098;
-  --blue: #007ba7;
-  --blue-text: #4fb8e0;
-  --rose: #ff2d95;
-  --red: #ff4d6a;
-  --green: #4ec98b;
-  --code: #d4d4d4;
-  --display: 'Rajdhani', 'Segoe UI', sans-serif;
+  /* Light: Paper. Warm white, black ink, no colour; the accent is the ink itself. */
+  --bg: #fbfaf7;
+  --surface: #f4f2ec;
+  --surface-2: #ece9e1;
+  --line: #e7e4dd;
+  --line-strong: #cfcabf;
+  --hover: rgba(0, 0, 0, 0.05);
+  --hl: #f1eee6;
+  --text: #161616;
+  --muted: #6f6b63;
+  --blue: #161616;
+  --blue-text: #161616;
+  --rose: #161616;
+  --on-accent: #fbfaf7;
+  --red: #b3261e;
+  --green: #2e7d4f;
+  --code: #2a2a2a;
+  --gutter: #b3aea3;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  --radius: 10px;
+  --display: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
   --row: 22px;
-  color-scheme: dark;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark: Frost. Translucent slate glass, soft corners, one light-blue accent. */
+    --bg: rgba(28, 30, 40, 0.94);
+    --surface: rgba(255, 255, 255, 0.06);
+    --surface-2: rgba(255, 255, 255, 0.1);
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.16);
+    --hover: rgba(255, 255, 255, 0.08);
+    --hl: rgba(124, 199, 255, 0.12);
+    --text: #f2f2f5;
+    --muted: #a3a6b4;
+    --blue: #7cc7ff;
+    --blue-text: #7cc7ff;
+    --rose: #7cc7ff;
+    --on-accent: #0b1a26;
+    --red: #ff7a8a;
+    --green: #7fdba7;
+    --code: #e4e4ea;
+    --gutter: #6b6f80;
+    --shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+    --radius: 14px;
+    color-scheme: dark;
+  }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
-  background: var(--bg); color: var(--text); font: 500 16px/1.45 var(--display);
+  background: var(--bg); color: var(--text); font: 400 15px/1.45 var(--display);
   display: flex; flex-direction: column; overflow: hidden;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -32,16 +64,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Title bar */
 .bar { display: flex; align-items: center; gap: 10px; height: 40px; padding-left: 16px; border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
-.brand { font-weight: 700; letter-spacing: 0.3em; }
-.what { color: var(--muted); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand { font-weight: 600; font-size: 14px; white-space: nowrap; flex: none; }
+.what { color: var(--muted); font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spacer { flex: 1; }
 .bar button { -webkit-app-region: no-drag; }
-.chip { border: 1px solid var(--line-strong); background: transparent; border-radius: 8px; padding: 1px 10px; font-size: 14px; font-weight: 600; }
-.chip:hover { background: rgba(255, 255, 255, 0.06); }
+.chip { border: 1px solid var(--line-strong); background: transparent; border-radius: 8px; padding: 1px 8px; font-size: 13px; font-weight: 600; white-space: nowrap; flex: none; }
+.chip:hover { background: var(--hover); }
 .chip.on { border-color: var(--blue-text); color: var(--blue-text); }
 .icon { width: 40px; height: 40px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; }
 .icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.icon:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.icon:hover { background: var(--hover); color: var(--text); }
 .icon.on { color: var(--blue-text); }
 .icon.x { width: 46px; }
 .icon.x:hover { background: #c42b1c; color: #fff; }
@@ -69,25 +101,32 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* Code */
 .code { flex: 1; min-height: 0; overflow: auto; font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; padding: 10px 0 24px; font: 13.5px/var(--row) var(--mono); color: var(--code); }
 .ln { display: flex; min-height: var(--row); }
-.ln .g { flex: none; width: 58px; padding-right: 14px; text-align: right; color: #5a5a5a; user-select: none; white-space: nowrap; }
+.ln .g { flex: none; width: 58px; padding-right: 14px; text-align: right; color: var(--gutter); user-select: none; white-space: nowrap; }
 .ln .tx { white-space: pre-wrap; word-break: break-all; padding-right: 16px; flex: 1; }
-.ln.on { background: rgba(255, 255, 255, 0.06); }
-.ln.on .g { color: var(--rose); }
+.ln.on { background: var(--hl); }
+.ln.on .g { color: var(--text); }
 .ln.bad .g b, .ln .g b { display: inline-block; min-width: 20px; padding: 0 4px; margin-right: 6px; border-radius: 4px; background: rgba(255, 77, 106, 0.16); color: var(--red); font: 11px/16px var(--mono); text-align: center; }
 .ln .g b.ok { background: rgba(78, 201, 139, 0.16); color: var(--green); }
 .ln.bad { background: rgba(255, 77, 106, 0.06); }
 .ln.added { background: rgba(78, 201, 139, 0.10); }
-.k { color: #569cd6; } .cf { color: #c586c0; } .s { color: #ce9178; } .n { color: #b5cea8; }
-.c { color: #6a9955; } .f { color: #dcdcaa; } .t { color: #4ec9b0; } .v { color: #9cdcfe; }
+/* Paper's code is ink: keywords bold, strings grey, numbers underlined. Frost's is a soft palette. */
+.k, .cf, .t { font-weight: 700; } .s { color: #6b6b6b; } .n { text-decoration: underline; text-underline-offset: 2px; }
+.c { color: #8a8578; font-style: italic; } .f { font-style: italic; }
+@media (prefers-color-scheme: dark) {
+  .k, .cf, .t { font-weight: 400; } .n { text-decoration: none; } .f { font-style: normal; }
+  .k, .cf { color: #c792ea; } .t { color: #7cc7ff; } .s { color: #c3e88d; } .n { color: #f78c6c; }
+  .c { color: #7f8496; } .f { color: #82aaff; } .v { color: #e4e4ea; }
+}
 
 /* Max's note under the line */
 .note {
-  margin: 6px 16px 8px 58px; padding: 10px 14px; border: 1px solid var(--line-strong); border-radius: 8px;
-  background: var(--surface); font: 500 16px/1.45 var(--display); color: var(--text); white-space: normal; word-break: normal;
+  margin: 6px 16px 8px 58px; padding: 10px 14px; border: 0; border-left: 2px solid var(--text); border-radius: 0;
+  background: transparent; font: 400 15px/1.45 var(--display); color: var(--text); white-space: normal; word-break: normal;
   animation: pop 0.25s cubic-bezier(.2, .8, .2, 1);
 }
 @keyframes pop { from { opacity: 0; transform: translateY(-4px); } }
-.note code { font: 13px var(--mono); color: #9cdcfe; }
+.note code { font: 13px var(--mono); color: var(--text); }
+@media (prefers-color-scheme: dark) { .note { border: 0; border-radius: 10px; background: var(--surface-2); } }
 .note .head { font-size: 12px; letter-spacing: 0.12em; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 .note .head.bad { color: var(--red); }
 .note .head.ok { color: var(--green); }
@@ -97,12 +136,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .note ul { margin: 6px 0 0; padding-left: 18px; }
 .diff { margin-top: 8px; border-radius: 6px; overflow: hidden; font: 12.5px/20px var(--mono); }
 .diff div { white-space: pre-wrap; padding: 0 10px; }
-.diff .del { background: rgba(255, 77, 106, 0.12); color: #f2a7b4; }
-.diff .add { background: rgba(78, 201, 139, 0.12); color: #a6e6c4; }
+.diff .del { background: rgba(255, 77, 106, 0.12); color: var(--red); }
+.diff .add { background: rgba(78, 201, 139, 0.12); color: var(--green); }
 .acts.start { justify-content: flex-start; }
 
 /* A course: every lesson, done ones ticked, the one to continue from highlighted */
-.course { display: grid; gap: 6px; padding: 4px 16px 16px; font: 500 16px/1.35 var(--display); }
+.course { display: grid; gap: 6px; padding: 4px 16px 16px; font: 400 15px/1.35 var(--display); }
 .course .acts { margin: 0 0 6px; justify-content: flex-start; }
 .lesson { display: flex; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
 .lesson:hover { border-color: var(--line-strong); background: var(--surface-2); }
@@ -114,15 +153,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .lesson .lg { display: block; font-size: 14px; color: var(--muted); }
 .acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .btn { border: 1px solid var(--line-strong); background: transparent; border-radius: 8px; padding: 3px 12px; font-size: 14px; font-weight: 600; }
-.btn:hover { background: rgba(255, 255, 255, 0.06); }
+.btn:hover { background: var(--hover); }
 .btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
-.btn.p { background: var(--rose); border-color: var(--rose); color: #fff; }
-.btn.p:hover { background: #ff4aa6; }
+.btn.p { background: var(--rose); border-color: var(--rose); color: var(--on-accent); }
+.btn.p:hover { background: var(--rose); opacity: 0.85; }
 .btn.d { border-color: var(--red); color: var(--red); }
 
 /* Practice: only the part being practised is editable (a cerulean edge and a lifted background) */
-.edit { display: flex; background: rgba(79, 184, 224, 0.08); box-shadow: inset 2px 0 0 var(--blue-text); }
-.edit .eg { flex: none; width: 58px; padding-right: 14px; text-align: right; color: #6d7a85; user-select: none; }
+.edit { display: flex; background: var(--hl); box-shadow: inset 2px 0 0 var(--blue-text); }
+.edit .eg { flex: none; width: 58px; padding-right: 14px; text-align: right; color: var(--gutter); user-select: none; }
 .edit .eg .bad { color: var(--red); }
 .edit .ew { position: relative; flex: 1; min-height: var(--row); }
 .edit pre, .edit textarea {
@@ -135,14 +174,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
   position: absolute; inset: 0; width: 100%; height: 100%; resize: none; background: transparent;
   color: transparent; caret-color: var(--text); outline: none;
 }
-.edit textarea::selection { background: rgba(79, 184, 224, 0.3); }
+.edit textarea::selection { background: var(--hl); }
 .locked { opacity: 0.55; }
 
 /* Bottom: ask anything about the code */
 .foot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
 .foot input {
   flex: 1; height: 34px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface);
-  color: var(--text); padding: 0 12px; font: 500 15px var(--display);
+  color: var(--text); padding: 0 12px; font: 400 15px var(--display);
 }
 .foot input:focus { border-color: var(--blue-text); }
 .foot .btn { height: 34px; }
@@ -151,9 +190,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .drop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; z-index: 5; }
 .dropbox {
   width: min(560px, calc(100vw - 32px)); padding: 16px; border: 1px dashed var(--line-strong); border-radius: 12px;
-  background: var(--surface); display: grid; gap: 10px;
+  background: var(--bg); display: grid; gap: 10px;
 }
-.dropbox.over { border-color: var(--blue-text); background: #12191d; }
+.dropbox.over { border-color: var(--blue-text); background: var(--hl); }
 .drop-title { font-size: 18px; font-weight: 600; }
 .dropbox textarea {
   height: 220px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);

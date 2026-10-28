@@ -6,7 +6,7 @@
   // Title bar: Home; no voice here, so no mute; keep-on-top is a setting; close puts Max back to sitting.
   $('#mute').remove();
   $('#pin').remove();
-  $('.brand').textContent = 'MAX CODE';
+  $('.brand').textContent = 'Max Code';
   $('#close').title = 'Close';
   $('#close').insertAdjacentHTML('beforebegin', '<button class="chip" id="homeBtn">Home</button>');
 
