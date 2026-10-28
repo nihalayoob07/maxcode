@@ -136,16 +136,16 @@
   </div>`);
   document.body.insertAdjacentHTML('beforeend', `
   <div id="hand" title="Max is hiding. Click to call him" role="button" aria-label="Call Max">
-    <svg viewBox="0 0 50 56" aria-hidden="true">
+    <svg viewBox="8 4 30 50" aria-hidden="true">
       <g class="wave">
         <rect class="sleeve" x="15" y="38" width="20" height="20" fill="#15171a"/>
         <rect class="cuff" x="13.5" y="35" width="23" height="5" rx="2.5" fill="#007ba7"/>
+        <path d="M16.5 31 11.5 22.5" stroke="#f2d6c2" stroke-width="5" stroke-linecap="round"/>
         <rect x="15.5" y="9" width="4.6" height="16" rx="2.3" fill="#f2d6c2"/>
         <rect x="20.6" y="5" width="4.6" height="18" rx="2.3" fill="#f2d6c2"/>
         <rect x="25.7" y="6" width="4.6" height="17" rx="2.3" fill="#f2d6c2"/>
         <rect x="30.8" y="10" width="4.4" height="15" rx="2.2" fill="#f2d6c2"/>
         <rect x="15" y="18" width="20.5" height="18" rx="7" fill="#f2d6c2"/>
-        <ellipse cx="13" cy="26" rx="3" ry="6" transform="rotate(-30 13 26)" fill="#f2d6c2"/>
       </g>
     </svg>
   </div>`);
