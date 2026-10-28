@@ -50,19 +50,21 @@ function parseJSON(text) {
   return JSON.parse(t.slice(a, b + 1));
 }
 // One question to Max; a garbled answer is asked once more. Returns null if a newer question replaced it.
+// think: a careful second look with reasoning. It runs behind what's already on screen, so if it's slow, garbled or
+// fails, it gives up quietly (main.js caps it at 90 s) and the first answer stays.
 async function askMax(prompt, label, think = false) {
   const id = reqId = Math.random().toString(36).slice(2);
   busy(label);
-  if (!think) task(null);   // a careful second look runs behind what's on screen: leave its summary up
+  if (!think) task(null);
   try {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < (think ? 1 : 2); attempt++) {
       const text = await window.max.tutorAsk(id, [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }], think);
       if (id !== reqId) return null;
       try { return parseJSON(text); } catch {}
     }
     throw new Error("Max's answer came back garbled. Try again.");
   } catch (e) {
-    if (id === reqId) { task(String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, ''), 'bad'); say("Sorry, that didn't work."); }
+    if (id === reqId && !think) { task(String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, ''), 'bad'); say("Sorry, that didn't work."); }
     return null;
   } finally { if (id === reqId) busy(null); }
 }

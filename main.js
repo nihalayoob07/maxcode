@@ -41,10 +41,10 @@ function saveKey(key, file = KEY_FILE()) {
 // One chat request: to NVIDIA with the user's own key, or through the Max Code server without one. net.fetch goes
 // through the PC's proxy settings like a browser would.
 const asks = new Map();   // id -> AbortController, so the tutor can cancel a question it replaced
-async function ask(body, id, key = readKey()) {
+async function ask(body, id, key = readKey(), ms = 280000) {
   const ctl = new AbortController();
   if (id) asks.set(id, ctl);
-  const timer = setTimeout(() => ctl.abort(), 280000);
+  const timer = setTimeout(() => ctl.abort(), ms);
   try {
     const res = await net.fetch(key ? API : `${SERVER}/api/chat`, {
       method: 'POST', signal: ctl.signal, body: JSON.stringify(body),
@@ -88,7 +88,7 @@ ipcMain.handle('tutorAsk', (_e, id, messages, think) => {
   const level = LEVELS[prefs.level] || LEVELS.beginner;
   messages = messages.map((m, i) => (i === 0 && m.role === 'system' ? { ...m, content: `${m.content} ${level}` } : m));
   return ask({ model: MODEL, messages, temperature: 0.3, max_tokens: think ? 16000 : 4000,
-    chat_template_kwargs: { enable_thinking: !!think } }, id);
+    chat_template_kwargs: { enable_thinking: !!think } }, id, undefined, think ? 90000 : 280000);   // reasoning: at most 90 s
 });
 ipcMain.on('chat-cancel', (_e, id) => asks.get(id)?.abort());
 
