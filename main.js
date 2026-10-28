@@ -2,7 +2,7 @@
 // Vercel), which holds Nihal's NVIDIA and ElevenLabs keys and gives each install a daily allowance. A user who adds
 // their own keys (kept encrypted on this PC with safeStorage) goes straight to NVIDIA / ElevenLabs, with no limits. The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
-const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeTheme, net, safeStorage, screen, shell } = require('electron');
+const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
@@ -358,6 +358,8 @@ function bindKeys({ call, talk } = prefs) {
 // box around it), then the model reads that part out at full resolution. If the same code is open in an editor,
 // that file is used instead, so fixes can be saved to it.
 async function capture() {
+  // Tests: MAXCODE_TEST_SCREEN=image.png stands in for the screen (no real screen is captured).
+  if (process.env.MAXCODE_TEST_SCREEN) return { display: screen.getPrimaryDisplay(), img: nativeImage.createFromPath(process.env.MAXCODE_TEST_SCREEN) };
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const others = [win, settings].filter((w) => w && !w.isDestroyed());
   others.forEach((w) => w.setOpacity(0));
@@ -408,24 +410,79 @@ function pointAt(display, box) {
 }
 const EXT = { python: '.py', javascript: '.js', typescript: '.ts', java: '.java', c: '.c', 'c++': '.cpp', 'c#': '.cs', go: '.go', rust: '.rs',
   html: '.html', css: '.css', sql: '.sql', php: '.php', ruby: '.rb', kotlin: '.kt', swift: '.swift', bash: '.sh', powershell: '.ps1' };
+// Where those lines are on screen. The vision model reads code well but is poor at saying where it is, so Windows' own
+// text recognition (Windows.Media.Ocr, built into Windows 10/11, runs on the PC) finds the lines it read, and the box
+// goes round them. [x0, y0, x1, y1] in the display's coordinates, or null.
+const OCR = `Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics,ContentType=WindowsRuntime]
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(); $t.Result }
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:MAXCODE_OCR)) ([Windows.Storage.StorageFile])
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$ocr = Await ([Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages().RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+$stream.Dispose()
+ConvertTo-Json -Compress @($ocr.Lines | ForEach-Object {
+  $r = $_.Words | ForEach-Object { $_.BoundingRect }
+  @{ t = $_.Text; x0 = ($r | ForEach-Object { $_.X } | Measure-Object -Minimum).Minimum; y0 = ($r | ForEach-Object { $_.Y } | Measure-Object -Minimum).Minimum;
+     x1 = ($r | ForEach-Object { $_.X + $_.Width } | Measure-Object -Maximum).Maximum; y1 = ($r | ForEach-Object { $_.Y + $_.Height } | Measure-Object -Maximum).Maximum }
+})`;
+function ocr(img) {
+  const file = path.join(app.getPath('temp'), `maxcode-ocr-${process.pid}.png`);
+  fs.writeFileSync(file, img.toPNG());
+  return new Promise((resolve) => {
+    require('child_process').execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(OCR, 'utf16le').toString('base64')],
+      { env: { ...process.env, MAXCODE_OCR: file }, timeout: 20000, windowsHide: true, maxBuffer: 8e6 }, (err, stdout) => {
+        fs.rm(file, () => {});
+        try { resolve(err ? [] : [].concat(JSON.parse(stdout || '[]'))); } catch { resolve([]); }
+      });
+  });
+}
+// How alike two lines are (0-1): shared pairs of letters, ignoring spaces and case (OCR drops and adds those).
+function alike(a, b) {
+  const pairs = (s) => { s = s.toLowerCase().replace(/\s+/g, ''); const m = new Map(); for (let i = 0; i < s.length - 1; i++) m.set(s.slice(i, i + 2), (m.get(s.slice(i, i + 2)) || 0) + 1); return [m, Math.max(1, s.length - 1)]; };
+  const [pa, na] = pairs(a), [pb, nb] = pairs(b);
+  let both = 0;
+  for (const [k, n] of pa) both += Math.min(n, pb.get(k) || 0);
+  return (2 * both) / (na + nb);
+}
+async function findOnScreen(img, code, display) {
+  const lines = code.split('\n').map((l) => l.trim()).filter((l) => l.length >= 3);
+  if (!lines.length) return null;
+  const seen = await ocr(img);
+  const hits = [];
+  for (const l of lines) {
+    let best = null, score = 0.55;
+    for (const o of seen) { const sc = alike(l, String(o.t)); if (sc > score) { score = sc; best = o; } }
+    if (best) hits.push(best);
+  }
+  if (hits.length < Math.min(2, lines.length) && !(lines.length === 1 && hits.length)) return null;
+  // The main block: hits near the middle one (a stray match elsewhere on screen doesn't stretch the box).
+  hits.sort((a, b) => a.y0 - b.y0);
+  const mid = hits[Math.floor(hits.length / 2)];
+  const block = hits.filter((h) => Math.abs(h.y0 - mid.y0) < 40 * lines.length + 200);
+  const k = display.size.width / img.getSize().width, pad = 18;
+  const box = [Math.min(...block.map((h) => h.x0)), Math.min(...block.map((h) => h.y0)), Math.max(...block.map((h) => h.x1)), Math.max(...block.map((h) => h.y1))]
+    .map((v) => v * k);
+  return [Math.max(0, box[0] - pad), Math.max(0, box[1] - pad), Math.min(display.size.width, box[2] + pad), Math.min(display.size.height, box[3] + pad)].map(Math.round);
+}
+
 ipcMain.handle('screenCode', async () => {
   const { display, img } = await capture();
-  const W = display.size.width, H = display.size.height;
-  const found = await look(({ width, height }) => `This is a ${width}x${height} pixel screenshot. Find the source code on it: in a code editor, terminal, browser, slide, document, chat or a photo, anywhere. If there are several, pick the biggest block of code. Reply with only JSON: {"found":true,"box":[left,top,right,bottom],"lang":"Python"}, the box in pixels of this image, tight around the code itself (not the whole window). If there is no code on screen, reply {"found":false}.`,
-    img, 1280, 300).catch(() => null);
-  let box = null;
-  if (found?.out?.found && Array.isArray(found.out.box) && found.out.box.length === 4) {
-    const k = W / found.size.width;
-    const [x0, y0, x1, y1] = found.out.box.map((v) => Math.round(Number(v) * k));
-    if (x1 - x0 > 30 && y1 - y0 > 15) box = [Math.max(0, x0), Math.max(0, y0), Math.min(W, x1), Math.min(H, y1)];
-  }
+  const read = await look(() => 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"Python","code":"the code"}. If there is no code on screen, reply {"code":""}.',
+    img, 1600, 4000).catch(() => null);
+  const box = read?.out?.code ? await findOnScreen(img, String(read.out.code), display).catch(() => null) : null;
+  const found = { out: { lang: read?.out?.lang } };
   if (box) win.webContents.send('say', 'Is this the code?');
   const answer = await pointAt(display, box);
   if (!answer) return null;
-  const f = img.getSize().width / W, pad = 8;
+  const { width: iw, height: ih } = img.getSize(), f = iw / display.size.width, pad = 8;
   const [x0, y0, x1, y1] = answer.rect;
-  const crop = img.crop({ x: Math.max(0, Math.round(x0 * f) - pad), y: Math.max(0, Math.round(y0 * f) - pad),
-    width: Math.min(img.getSize().width, Math.round((x1 - x0) * f) + 2 * pad), height: Math.min(img.getSize().height, Math.round((y1 - y0) * f) + 2 * pad) });
+  const cx = Math.max(0, Math.round(x0 * f) - pad), cy = Math.max(0, Math.round(y0 * f) - pad);
+  const crop = img.crop({ x: cx, y: cy, width: Math.min(iw - cx, Math.round((x1 - x0) * f) + 2 * pad), height: Math.min(ih - cy, Math.round((y1 - y0) * f) + 2 * pad) });
   const { out } = await look(() => 'Transcribe the source code in this image exactly as written: every line, the same indentation, no line numbers, nothing fixed or added. Reply with only JSON: {"lang":"Python","code":"the code"}. If there is no code, reply {"code":""}.',
     crop, 1800, 8000);
   const code = String(out?.code || '').replace(/\r/g, '');
