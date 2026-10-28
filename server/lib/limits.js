@@ -37,9 +37,9 @@ export async function spend(redis, { install, ip, kind, amount, day = today() })
   const keys = [`u:${day}:${install}:${kind}`, `ip:${day}:${ip}:${kind}`, `all:${day}:${kind}`];
   const out = await redis(keys.flatMap((k) => [['INCRBY', k, amount], ['EXPIRE', k, 172800]]));
   const [mine, fromIp, everyone] = [out[0], out[2], out[4]].map(Number);
-  if (everyone > TOTAL[kind]) return MESSAGES.total;
-  if (mine > LIMITS[kind] || fromIp > LIMITS[kind] * PER_IP) return MESSAGES[kind];
-  return null;
+  const stop = everyone > TOTAL[kind] ? MESSAGES.total : mine > LIMITS[kind] || fromIp > LIMITS[kind] * PER_IP ? MESSAGES[kind] : null;
+  if (stop) await redis(keys.map((k) => ['DECRBY', k, amount]));   // refused: it didn't happen, so it doesn't count
+  return stop;
 }
 
 const json = (body, status) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -60,7 +60,7 @@ export { json };
 if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/').replace(/^\//, '')}`) {
   const assert = (await import('node:assert')).strict;
   const store = new Map();
-  const fake = async (cmds) => cmds.map(([op, k, n]) => (op === 'INCRBY' ? (store.set(k, (store.get(k) || 0) + n), store.get(k)) : 1));
+  const fake = async (cmds) => cmds.map(([op, k, n]) => (op === 'EXPIRE' ? 1 : (store.set(k, (store.get(k) || 0) + (op === 'DECRBY' ? -n : n)), store.get(k))));
   const go = (install, ip, kind, amount = 1) => spend(fake, { install, ip, kind, amount, day: 'd' });
   for (let i = 0; i < 60; i++) assert.equal(await go('a', '1.1.1.1', 'chat'), null);
   assert.match(await go('a', '1.1.1.1', 'chat'), /free daily limit/);           // the 61st question
@@ -71,6 +71,8 @@ if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/').replace(
   assert.match(await go('w', '2.2.2.2', 'chat'), /free daily limit/);           // over 300 from that IP, even on a new id
   assert.equal(await go('v', '3.3.3.3', 'voice', 900), null);
   assert.match(await go('v', '3.3.3.3', 'voice', 1), /talked a lot/);
+  assert.equal(store.get('all:d:voice'), 900);                                  // the refused one isn't counted
+  assert.equal(await go('u', '5.5.5.5', 'voice', 400), null);                   // so others still get theirs
   store.clear();
   assert.match(await go('t', '4.4.4.4', 'vision', TOTAL.vision + 1), /very busy/); // everyone's total
   console.log('limits ok');
