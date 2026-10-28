@@ -29,14 +29,26 @@ function installId() {
 const serverSays = async (res) => (await res.clone().json().catch(() => null))?.error;
 
 // ---------- The keys (NVIDIA, and ElevenLabs for the voice) ----------
-function readKey(file = KEY_FILE()) {
+// Encrypted with Windows' DPAPI for this Windows user (through PowerShell), not Electron's safeStorage. safeStorage's
+// own secret lives in "Local State", and two copies starting at once (an install launching Max while another starts)
+// could end up with different ones, so a saved key became unreadable after a restart. Read once at startup, then kept.
+const DPAPI = (op) => `Add-Type -AssemblyName System.Security
+[Convert]::ToBase64String([Security.Cryptography.ProtectedData]::${op}([Convert]::FromBase64String($env:MAXCODE_IN), $null, 'CurrentUser'))`;
+const dpapi = async (op, b64) => String(await powershell(DPAPI(op), { MAXCODE_IN: b64 }, 15000)).trim();
+const keys = {}, lost = {};   // file -> the key; file -> true if a saved key couldn't be read
+async function loadKey(file) {
+  let raw;
+  try { raw = fs.readFileSync(file); } catch { return; }
   try {
-    const raw = fs.readFileSync(file);
-    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString('utf8');
-  } catch { return ''; }
+    if (raw.subarray(0, 4).toString() === 'DP1:') keys[file] = Buffer.from(await dpapi('Unprotect', raw.subarray(4).toString()), 'base64').toString('utf8');
+    else await saveKey(safeStorage.decryptString(raw), file);   // saved by an older version: move it over if it still reads
+  } catch { lost[file] = true; }
 }
-function saveKey(key, file = KEY_FILE()) {
-  fs.writeFileSync(file, safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(key) : key);
+const readKey = (file = KEY_FILE()) => keys[file] || '';
+async function saveKey(key, file = KEY_FILE()) {
+  fs.writeFileSync(file, `DP1:${await dpapi('Protect', Buffer.from(key, 'utf8').toString('base64'))}`);
+  keys[file] = key;
+  delete lost[file];
 }
 
 // One chat request: to NVIDIA with the user's own key, or through the Max Code server without one. net.fetch goes
@@ -65,13 +77,13 @@ async function ask(body, id, key = readKey(), ms = 280000) {
   } finally { clearTimeout(timer); asks.delete(id); }
 }
 
-ipcMain.handle('hasKey', () => !!readKey());
+ipcMain.handle('hasKey', () => (readKey() ? true : lost[KEY_FILE()] ? 'lost' : false));
 // A new key is tried with a one-word question before it's saved.
 ipcMain.handle('setKey', async (_e, key) => {
   key = String(key || '').trim();
   if (!/^nvapi-\S{20,}$/.test(key)) throw new Error('That doesn\'t look like an NVIDIA key. It starts with "nvapi-".');
   await ask({ model: MODEL, messages: [{ role: 'user', content: 'Say OK.' }], max_tokens: 5 }, null, key);
-  saveKey(key);
+  await saveKey(key);
   return true;
 });
 ipcMain.handle('openKeyPage', (_e, which) => shell.openExternal(which === 'voice'
@@ -172,7 +184,7 @@ ipcMain.handle('transcribe', async (_e, buffer) => {
   if (!res.ok) throw new Error(elevenError(res.status, await res.text().catch(() => '')));
   return String((await res.json()).text || '').trim();
 });
-ipcMain.handle('hasVoiceKey', () => !!readKey(VOICE_KEY_FILE()));
+ipcMain.handle('hasVoiceKey', () => (readKey(VOICE_KEY_FILE()) ? true : lost[VOICE_KEY_FILE()] ? 'lost' : false));
 // A key that can't read the account (a restricted one) is still fine if it isn't rejected outright.
 ipcMain.handle('setVoiceKey', async (_e, key) => {
   key = String(key || '').trim();
@@ -181,7 +193,7 @@ ipcMain.handle('setVoiceKey', async (_e, key) => {
   if (!res) throw new Error("Can't reach ElevenLabs. Check your internet connection.");
   const body = res.ok ? '' : await res.text().catch(() => '');
   if (!res.ok && !/missing_permissions/.test(body)) throw new Error(elevenError(res.status, body));
-  saveKey(key, VOICE_KEY_FILE());
+  await saveKey(key, VOICE_KEY_FILE());
   return true;
 });
 
@@ -552,7 +564,8 @@ function openSettings() {
   settings.on('closed', () => { if (win && !win.isDestroyed()) win.webContents.send('keyChanged'); });
 }
 
-function open() {
+async function open() {
+  await Promise.all([loadKey(KEY_FILE()), loadKey(VOICE_KEY_FILE())]);
   prefs = { ...prefs, ...readJSON(PREFS()) };
   nativeTheme.themeSource = prefs.theme;
   win = new BrowserWindow({

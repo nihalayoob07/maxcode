@@ -16,7 +16,10 @@
   // ---------- The key ----------
   async function keyState() {
     const has = await window.max.hasKey();
-    $('#keyMsg').textContent = has ? 'Saved: no daily limit. Paste a new one to replace it.' : 'Max works without it, with a daily limit. Your own free key removes it.';
+    $('#keyMsg').className = has === 'lost' ? 'msg bad' : 'msg';
+    $('#keyMsg').textContent = has === true ? 'Saved: no daily limit. Paste a new one to replace it.'
+      : has === 'lost' ? "Your saved key couldn't be read (a bug in an older version). Paste it again, please."
+      : 'Max works without it, with a daily limit. Your own free key removes it.';
   }
   $('#getKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage(); };
   async function saveKey() {
@@ -41,7 +44,8 @@
   async function voiceState() {
     const has = await window.max.hasVoiceKey();
     $('#voiceMsg').className = 'msg';
-    $('#voiceMsg').textContent = has ? 'Saved: no daily limit on his voice.' : 'Max talks without it, a few minutes a day.';
+    $('#voiceMsg').textContent = has === true ? 'Saved: no daily limit on his voice.'
+      : has === 'lost' ? "Your saved key couldn't be read (a bug in an older version). Paste it again, please." : 'Max talks without it, a minute a day.';
   }
   $('#getVoiceKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage('voice'); };
   async function saveVoiceKey() {
