@@ -2,7 +2,7 @@
 
 Max's coding tutor and debugger as its own Windows app. No server, no setup: install it, paste a free NVIDIA API key once, and go.
 
-Max sits on your screen as a small chibi with a laptop. Click him to open his panel, drag him anywhere, right-click for Settings or Quit. He looks at his laptop while he's thinking.
+Max hides under the bottom of your screen with just a raised hand peeking out. Click the hand or press **Ctrl+Alt+M** and he pops up as a small chibi (curly hair, glasses, laptop). Click him to open his panel, drag him anywhere, right-click for Settings or Quit. After 5 idle minutes he hides again. He looks at his laptop while he's thinking.
 
 - **Debug my code**: reads the file open in VS Code, Cursor or Windsurf, finds the bugs, and applies the fixes you accept.
 - **Debug a file / Explain code**: drop a file or paste a program.

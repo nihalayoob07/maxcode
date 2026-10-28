@@ -1,7 +1,7 @@
 // Max Code: Max's coding tutor and debugger on its own, no server. The tutor asks NVIDIA's API directly with the
 // user's own key, kept encrypted on this PC (Electron safeStorage). The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
-const { app, BrowserWindow, ipcMain, Menu, nativeTheme, net, safeStorage, screen, shell } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
@@ -82,10 +82,12 @@ ipcMain.handle('tutorSave', (_e, fix) => tutorCode.applyFix(fix));
 ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 
 // ---------- The window ----------
-// Max sits on the screen as a small chibi (pet). Clicking him opens the tutor as a panel above him: the window grows
+// Max hides under the bottom of the screen with just a raised hand peeking out (hide). Clicking the hand, or the
+// shortcut, calls him up as a small chibi (pet); clicking him opens the tutor as a panel above him: the window grows
 // up and to the left from its bottom-right corner, so he stays where he was. Settings is its own, big window.
-const PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
-let win = null, settings = null, mode = 'pet';
+const HIDE = { width: 50, height: 56 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
+const CALL = 'Control+Alt+M';
+let win = null, settings = null, mode = 'hide';
 let prefs = { onTop: true };
 
 let saveTimer = null;
@@ -104,13 +106,25 @@ function boundsFor(size) {
     y: clamp(bottom - size.height, area.y, area.y + area.height - size.height), ...size,
   };
 }
+// Hidden, the hand sits on the bottom edge of the screen, under where Max sits.
+function hideBounds() {
+  const area = screen.getPrimaryDisplay().workArea, pet = boundsFor(PET);
+  const x = Math.max(area.x, Math.min(pet.x + (PET.width - HIDE.width) / 2, area.x + area.width - HIDE.width));
+  return { x: Math.round(x), y: area.y + area.height - HIDE.height, ...HIDE };
+}
+let sinkTimer = null;
 function setMode(m) {
+  if (m === mode) return;
+  clearTimeout(sinkTimer);
   mode = m;
-  win.setBounds(boundsFor(m === 'panel' ? PANEL : PET));
   win.webContents.send('mode', m);
+  // He sinks (pet.css) before the window shrinks to the hand; rising, the window grows first.
+  if (m === 'hide') sinkTimer = setTimeout(() => win.setBounds(hideBounds()), 380);
+  else win.setBounds(boundsFor(m === 'panel' ? PANEL : PET));
   if (m === 'panel') win.focus();
 }
 function rememberCorner() {
+  if (mode === 'hide') return;   // the hand's spot follows Max's, not the other way round
   const b = win.getBounds();
   prefs.right = b.x + b.width; prefs.bottom = b.y + b.height;
   savePrefs();
@@ -120,7 +134,7 @@ ipcMain.handle('tutorWin', (_e, what) => {   // the tutor's close / minimise put
   if (what === 'close' || what === 'min') setMode('pet');
   return prefs.onTop;
 });
-ipcMain.on('mode', (_e, m) => setMode(m === 'panel' ? 'panel' : 'pet'));
+ipcMain.on('mode', (_e, m) => setMode(['hide', 'panel'].includes(m) ? m : 'pet'));
 ipcMain.on('drag', (_e, dx, dy) => {
   const [x, y] = win.getPosition();
   win.setPosition(Math.round(x + dx), Math.round(y + dy));
@@ -128,6 +142,7 @@ ipcMain.on('drag', (_e, dx, dy) => {
 });
 ipcMain.on('petMenu', () => Menu.buildFromTemplate([
   { label: mode === 'panel' ? 'Sit down' : 'Open', click: () => setMode(mode === 'panel' ? 'pet' : 'panel') },
+  { label: 'Hide', enabled: mode !== 'hide', click: () => setMode('hide') },
   { label: 'Settings', click: openSettings },
   { type: 'separator' },
   { label: 'Quit Max Code', click: () => app.quit() },
@@ -136,7 +151,7 @@ ipcMain.on('openSettings', openSettings);
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Settings ----------
-ipcMain.handle('prefs', () => ({ onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
+ipcMain.handle('prefs', () => ({ call: 'Ctrl+Alt+M', onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
 ipcMain.handle('setPref', (_e, name, on) => {
   if (name === 'onTop') { prefs.onTop = !!on; win.setAlwaysOnTop(prefs.onTop); savePrefs(); }
   if (name === 'login') app.setLoginItemSettings({ openAtLogin: !!on });
@@ -163,12 +178,16 @@ function open() {
   prefs = { ...prefs, ...readJSON(PREFS()) };
   nativeTheme.themeSource = 'dark';
   win = new BrowserWindow({
-    ...boundsFor(PET), frame: false, transparent: true, resizable: false, maximizable: false, skipTaskbar: true,
+    ...hideBounds(), frame: false, transparent: true, resizable: false, maximizable: false, skipTaskbar: true,
     hasShadow: false, alwaysOnTop: prefs.onTop, title: 'Max Code', icon: path.join(__dirname, 'assets', 'icon.png'), show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
-  win.once('ready-to-show', () => { win.show(); if (!readKey()) openSettings(); });
+  win.once('ready-to-show', () => {
+    win.show();
+    if (!readKey()) { setMode('pet'); openSettings(); }
+  });
+  globalShortcut.register(CALL, () => setMode('panel'));
   win.on('moved', rememberCorner);   // dragged by the panel's title bar
 }
 // Links open in the browser, never inside the app (both windows).
@@ -182,4 +201,5 @@ else {
   app.on('second-instance', () => { if (win) setMode('panel'); });
   app.whenReady().then(open);
   app.on('window-all-closed', () => app.quit());
+  app.on('will-quit', () => globalShortcut.unregisterAll());
 }
