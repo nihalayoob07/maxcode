@@ -1,5 +1,6 @@
-// Max Code: Max's coding tutor and debugger on its own, no server. The tutor asks NVIDIA's API directly with the
-// user's own key, and talks and listens through ElevenLabs with theirs; both kept encrypted on this PC (safeStorage). The tutor (shared/, ui/tutor.*) came from max-assistant.
+// Max Code: Max's coding tutor and debugger. With no keys it goes through the free Max Code server (server/, on
+// Vercel), which holds Nihal's NVIDIA and ElevenLabs keys and gives each install a daily allowance. A user who adds
+// their own keys (kept encrypted on this PC with safeStorage) goes straight to NVIDIA / ElevenLabs, with no limits. The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
 const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
@@ -9,11 +10,22 @@ const tutorCode = require('./shared/tutor');
 const API = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const MODEL = 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const VL_MODEL = 'nvidia/nemotron-3.5-super-vl-120b-a12b';   // reads code off the screen
+const SERVER = 'https://maxcode-server-weld.vercel.app';
 const KEY_FILE = () => path.join(app.getPath('userData'), 'key.bin');
 const VOICE_KEY_FILE = () => path.join(app.getPath('userData'), 'voice-key.bin');
 const COURSES = () => path.join(app.getPath('userData'), 'courses.json');
 const PREFS = () => path.join(app.getPath('userData'), 'prefs.json');
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; } };
+// A random id for this install, made on first run: what the server counts the daily allowance against.
+let install = '';
+function installId() {
+  const f = path.join(app.getPath('userData'), 'install-id');
+  try { install ||= fs.readFileSync(f, 'utf8').trim(); } catch {}
+  if (!install) fs.writeFileSync(f, (install = require('crypto').randomUUID()));
+  return install;
+}
+// The server's own words when it says no (a daily limit, not set up yet).
+const serverSays = async (res) => (await res.clone().json().catch(() => null))?.error;
 
 // ---------- The keys (NVIDIA, and ElevenLabs for the voice) ----------
 function readKey(file = KEY_FILE()) {
@@ -26,25 +38,28 @@ function saveKey(key, file = KEY_FILE()) {
   fs.writeFileSync(file, safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(key) : key);
 }
 
-// One chat request. net.fetch goes through the PC's proxy settings like a browser would.
+// One chat request: to NVIDIA with the user's own key, or through the Max Code server without one. net.fetch goes
+// through the PC's proxy settings like a browser would.
 const asks = new Map();   // id -> AbortController, so the tutor can cancel a question it replaced
-async function ask(key, body, id) {
+async function ask(body, id, key = readKey()) {
   const ctl = new AbortController();
   if (id) asks.set(id, ctl);
   const timer = setTimeout(() => ctl.abort(), 280000);
   try {
-    const res = await net.fetch(API, {
-      method: 'POST', signal: ctl.signal,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body),
+    const res = await net.fetch(key ? API : `${SERVER}/api/chat`, {
+      method: 'POST', signal: ctl.signal, body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : { 'X-Max-Install': installId() }) },
     });
-    if (res.status === 401 || res.status === 403) throw new Error('NVIDIA rejected your API key. Change it in Settings.');
+    const said = !key && !res.ok && await serverSays(res);
+    if (said) throw new Error(said);
+    if (key && (res.status === 401 || res.status === 403)) throw new Error('NVIDIA rejected your API key. Change it in Settings.');
     if (res.status === 429) throw new Error('NVIDIA says too many requests. Wait a minute and try again.');
     const j = await res.json().catch(() => null);
     if (!res.ok || !j?.choices) throw new Error(`the model said: ${String(j?.detail || j?.error?.message || j?.error || res.status).slice(0, 160)}`);
     return j.choices[0]?.message?.content || '';
   } catch (e) {
     if (e.name === 'AbortError') throw new Error('Max took too long to answer. Try again.');
-    if (/fetch failed|ERR_INTERNET|ERR_NAME|ERR_CONNECTION|ERR_NETWORK/i.test(e.message)) throw new Error("Can't reach NVIDIA. Check your internet connection.");
+    if (/fetch failed|ERR_INTERNET|ERR_NAME|ERR_CONNECTION|ERR_NETWORK/i.test(e.message)) throw new Error("Can't reach Max. Check your internet connection.");
     throw e;
   } finally { clearTimeout(timer); asks.delete(id); }
 }
@@ -54,7 +69,7 @@ ipcMain.handle('hasKey', () => !!readKey());
 ipcMain.handle('setKey', async (_e, key) => {
   key = String(key || '').trim();
   if (!/^nvapi-\S{20,}$/.test(key)) throw new Error('That doesn\'t look like an NVIDIA key. It starts with "nvapi-".');
-  await ask(key, { model: MODEL, messages: [{ role: 'user', content: 'Say OK.' }], max_tokens: 5 });
+  await ask({ model: MODEL, messages: [{ role: 'user', content: 'Say OK.' }], max_tokens: 5 }, null, key);
   saveKey(key);
   return true;
 });
@@ -70,11 +85,9 @@ const LEVELS = {
   expert: 'The user is an expert: be terse and precise, use full technical vocabulary, skip anything obvious, and point out edge cases, performance and idiomatic alternatives where they matter.',
 };
 ipcMain.handle('tutorAsk', (_e, id, messages, think) => {
-  const key = readKey();
-  if (!key) throw new Error('Add your NVIDIA API key in Settings first.');
   const level = LEVELS[prefs.level] || LEVELS.beginner;
   messages = messages.map((m, i) => (i === 0 && m.role === 'system' ? { ...m, content: `${m.content} ${level}` } : m));
-  return ask(key, { model: MODEL, messages, temperature: 0.3, max_tokens: think ? 16000 : 4000,
+  return ask({ model: MODEL, messages, temperature: 0.3, max_tokens: think ? 16000 : 4000,
     chat_template_kwargs: { enable_thinking: !!think } }, id);
 });
 ipcMain.on('chat-cancel', (_e, id) => asks.get(id)?.abort());
@@ -90,18 +103,19 @@ function elevenError(status, body) {
   if (status === 429 || /quota|credits/i.test(body)) return 'ElevenLabs says you are out of credits for now.';
   return `ElevenLabs said: ${String(body).slice(0, 140) || status}`;
 }
-const voiceKey = () => {
-  const key = readKey(VOICE_KEY_FILE());
-  if (!key) throw new Error('Add an ElevenLabs key in Settings to talk to Max.');
-  return key;
-};
-// Raw 24 kHz 16-bit PCM back, as float samples for the panel to play (tutor.js onTts).
+// Raw 24 kHz 16-bit PCM back, as float samples for the panel to play (tutor.js onTts): from ElevenLabs with the
+// user's own key, or the Max Code server's voice without one.
 async function elevenSpeech(key, text) {
   for (;;) {
-    const res = await net.fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICES[voice]}?output_format=pcm_24000`, {
-      method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
-    });
+    const res = key
+      ? await net.fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICES[voice]}?output_format=pcm_24000`, {
+        method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+      })
+      : await net.fetch(`${SERVER}/api/speak`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Max-Install': installId() }, body: JSON.stringify({ text }),
+      });
+    if (!key && !res.ok) throw new Error(await serverSays(res) || "Max can't talk right now.");
     if (res.ok) {
       const bytes = Buffer.from(await res.arrayBuffer());
       const audio = new Float32Array(bytes.length >> 1);
@@ -117,7 +131,7 @@ const hush = new Set();   // ids the panel stopped (a new step, mute)
 ipcMain.on('cancelSpeak', (_e, id) => hush.add(id));
 // Long answers go in ~350-character pieces at sentence ends, played back to back.
 ipcMain.handle('speak', async (e, id, text) => {
-  const key = voiceKey();
+  const key = readKey(VOICE_KEY_FILE());
   const chunks = [];
   for (const s of String(text).match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) || []) {
     if (chunks.length && (chunks[chunks.length - 1] + s).length <= 350) chunks[chunks.length - 1] += s;
@@ -370,10 +384,8 @@ function json(text) {
   try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
 }
 async function look(prompt, img, maxW, maxTokens) {
-  const key = readKey();
-  if (!key) throw new Error('Add your NVIDIA API key in Settings first.');
   const { b64, size } = shrink(img, maxW);
-  const text = await ask(key, { model: VL_MODEL, temperature: 0, max_tokens: maxTokens, chat_template_kwargs: { enable_thinking: false },
+  const text = await ask({ model: VL_MODEL, temperature: 0, max_tokens: maxTokens, chat_template_kwargs: { enable_thinking: false },
     messages: [{ role: 'user', content: [{ type: 'text', text: prompt(size) }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }] }] });
   return { out: json(text), size };
 }
@@ -453,7 +465,8 @@ function open() {
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.once('ready-to-show', () => {
     win.show();
-    if (!readKey()) { setMode('pet'); openSettings(); } else handTimer = setTimeout(() => win.hide(), HAND_FOR);
+    // First run: Max sits on screen so you meet him (nothing to set up: the server answers until you add keys).
+    if (!prefs.met) { prefs.met = true; savePrefs(); setMode('pet'); } else handTimer = setTimeout(() => win.hide(), HAND_FOR);
   });
   bindKeys();
   if (prefs.wake) setTimeout(() => asr().catch(() => {}), 5000);   // warm Whisper up (downloads it the first time)

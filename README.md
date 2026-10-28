@@ -15,7 +15,7 @@ He dresses for the time of day: pyjamas and a nightcap at night (with zzz after 
 - **Settings** (three small tabs): General (level, theme, call shortcut, keep on top, start with Windows), Voice ("Max" on/off, talk shortcut), Keys.
 - **Looks**: light theme is Paper (warm white, black ink); dark theme is Frost (translucent slate glass). It follows Windows unless you pick one in Settings.
 
-It needs internet: answers come from NVIDIA Nemotron on build.nvidia.com, using the user's own key. The key is stored encrypted on the PC (Windows DPAPI) and only ever sent to NVIDIA.
+It needs internet. Out of the box, answers (NVIDIA Nemotron) and Max's voice (ElevenLabs) come through the free Max Code server in `server/`, with a daily allowance per install. Add your own free NVIDIA key (and optionally an ElevenLabs key) in Settings → Keys to go direct with no limits; keys are stored encrypted on the PC (Windows DPAPI).
 
 ## Install
 
@@ -26,6 +26,10 @@ Download `MaxCode-Setup.exe` from the [Releases](https://github.com/nihalayoob07
 1. Go to [build.nvidia.com/settings/api-keys](https://build.nvidia.com/settings/api-keys) and sign in (free).
 2. **Generate API Key**, copy it (it starts with `nvapi-`).
 3. Paste it into Max Code. To change it later: right-click Max → **Settings**.
+
+## The server
+
+`server/` is a small Vercel project (team nova, https://maxcode-server-weld.vercel.app): `api/chat.js` (Max's two NVIDIA models only), `api/speak.js` (ElevenLabs), and `lib/limits.js` (per install / per IP / total daily caps in Upstash Redis; `node lib/limits.js` checks them). It needs `NVIDIA_API_KEY`, `ELEVENLABS_API_KEY` and an Upstash Redis store connected in Vercel. Deploy with `vercel deploy --prod` from `server/`.
 
 ## Build it yourself
 

@@ -15,11 +15,6 @@
 
   document.body.insertAdjacentHTML('beforeend', `
   <section class="home" id="home">
-    <div class="homebox" id="nokey" hidden>
-      <h1>Hi, I'm Max</h1>
-      <p>I explain code, teach languages and find bugs. First I need a free NVIDIA API key.</p>
-      <button class="btn p" id="addKey">Add the key in Settings</button>
-    </div>
     <div class="homebox" id="start" hidden>
       <h1>What do you want to do?</h1>
       <input id="askHome" placeholder="Ask anything, e.g. how do pointers work in C" autocomplete="off" spellcheck="false">
@@ -40,13 +35,11 @@
     </div>
   </section>`);
 
-  async function home() {
-    const has = await window.max.hasKey();
-    $('#nokey').hidden = has;
-    $('#start').hidden = !has;
+  function home() {
+    $('#start').hidden = false;
     $('#courseBox').hidden = true;
     $('#home').hidden = false;
-    if (has) $('#askHome').focus();
+    $('#askHome').focus();
   }
   const leave = () => { $('#home').hidden = true; };
 
@@ -63,7 +56,7 @@
       b.dataset.common = COMMON.includes(lang) || total ? '1' : '';
       return b;
     }));
-    $('#start').hidden = $('#nokey').hidden = true;
+    $('#start').hidden = true;
     $('#courseBox').hidden = false;
     $('#courseFilter').value = '';
     filter();
@@ -117,7 +110,6 @@
     request(t);
   });
   const settings = (e) => { e.preventDefault(); window.max.openSettings(); };
-  $('#addKey').onclick = settings;
   $('#toSettings').onclick = settings;
   $('#homeBtn').onclick = () => { reset(null); render(); home(); };
   $('#dropCancel').addEventListener('click', home);   // the drop box opened from home: back to it

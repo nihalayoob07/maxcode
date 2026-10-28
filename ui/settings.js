@@ -16,8 +16,7 @@
   // ---------- The key ----------
   async function keyState() {
     const has = await window.max.hasKey();
-    $('#keyMsg').textContent = has ? 'Saved. Paste a new one to replace it.' : 'Needed for Max to answer. Kept encrypted on this PC.';
-    if (!has) tab('keys');
+    $('#keyMsg').textContent = has ? 'Saved: no daily limit. Paste a new one to replace it.' : 'Max works without it, with a daily limit. Your own free key removes it.';
   }
   $('#getKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage(); };
   async function saveKey() {
@@ -42,7 +41,7 @@
   async function voiceState() {
     const has = await window.max.hasVoiceKey();
     $('#voiceMsg').className = 'msg';
-    $('#voiceMsg').textContent = has ? 'Saved: Max talks in his ElevenLabs voice.' : 'For Max\'s spoken voice.';
+    $('#voiceMsg').textContent = has ? 'Saved: no daily limit on his voice.' : 'Max talks without it, a few minutes a day.';
   }
   $('#getVoiceKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage('voice'); };
   async function saveVoiceKey() {

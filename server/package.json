@@ -1,0 +1,5 @@
+{
+  "name": "maxcode-server",
+  "private": true,
+  "type": "module"
+}
