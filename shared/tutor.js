@@ -7,7 +7,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 // ---------- What was asked ----------
-const LANGS = 'python|c\\+\\+|cpp|c#|c sharp|c|java|javascript|js|typescript|ts|rust|go|golang|kotlin|swift|php|ruby|sql|html|css|bash|shell|dart|r|scala|haskell|lua|perl|assembly';
+const LANGS = 'python|c\\+\\+|cpp|c#|c sharp|c|java|javascript|js|typescript|ts|rust|go|golang|kotlin|swift|php|ruby|sql|html|css|bash|shell|powershell|dart|r|scala|haskell|lua|perl|assembly|matlab|julia|elixir|erlang|clojure|f#|f sharp|ocaml|lisp|scheme|racket|objective-c|objective c|zig|fortran|cobol|visual basic|vb|vb\\.net|pascal|delphi|solidity|groovy|prolog|ada';
 const IN_LANG = new RegExp(`\\b(?:in|using|with|for)\\s+(?:${LANGS})(?![\\w+#])`, 'i');
 // Programming words that don't also mean something else to Max (no "list", "files", "time", "sort"...).
 const TOPIC = /\b(for[- ]?loops?|while[- ]?loops?|do[- ]while|loops?|if[- ]else|else[- ]if|if statements?|switch( case| statements?)?|arrays?|tuples?|dictionar(?:y|ies)|hash ?maps?|hash ?tables?|pointers?|recursion|recursive functions?|functions?|methods?|classes|objects? oriented|oop|structs?|unions?|enums?|variables?|data types?|operators?|ternary|lambdas?|closures?|exceptions?|try[- ]catch|try[- ]except|error handling|file handling|printf|scanf|cout|cin|malloc|calloc|free\(\)|linked lists?|stacks? and queues?|binary (?:search|trees?)|bubble sort|merge sort|quick ?sort|insertion sort|selection sort|syntax|inheritance|polymorphism|encapsulation|interfaces?|generics?|templates?|vectors?|iterators?|generators?|decorators?|async(?:hronous)?|promises?|callbacks?|list comprehensions?|slicing|regex|regular expressions?|bitwise|macros?|header files?|namespaces?|constructors?|destructors?|algorithms?|data structures?|programming|coding)\b/i;
@@ -16,12 +16,19 @@ const NOT_CODE = /\b(calendar|todos?|leads?|whatsapp|meeting|email|weather|video
 // Which language was named, as Whisper hears it ("in see" is C). In a request only what follows "in/using/with"
 // counts ("how do loops go" names no language); as the answer to "Which language?" the whole reply does.
 const LANGUAGES = [
+  ['Objective-C', /\bobjective[\s-]?c\b/i], ['F#', /\bf\s*(?:#|sharp)/i], ['Visual Basic', /\bvisual\s*basic\b|\bvb(?:\.net)?\b/i],
+  ['PowerShell', /\bpower\s?shell\b/i],
   ['C++', /\b(?:c|see|sea)\s*(?:\+\+|plus\s*plus)|\bcpp\b/i], ['C#', /\b(?:c|see|sea)\s*(?:#|sharp)/i],
   ['JavaScript', /\bjava\s?script\b|\bjs\b/i], ['TypeScript', /\btype\s?script\b/i], ['Java', /\bjava\b/i],
   ['Python', /\bpython\b/i], ['C', /\b(?:c|see|sea)\b/i], ['Go', /\b(?:go|golang)\b/i], ['Rust', /\brust\b/i],
   ['Kotlin', /\bkotlin\b/i], ['Swift', /\bswift\b/i], ['PHP', /\bphp\b/i], ['Ruby', /\bruby\b/i], ['SQL', /\b(?:sql|sequel)\b/i],
   ['Bash', /\b(?:bash|shell)\b/i], ['Dart', /\bdart\b/i], ['Scala', /\bscala\b/i], ['Lua', /\blua\b/i], ['Perl', /\bperl\b/i],
-  ['HTML', /\bhtml\b/i], ['CSS', /\bcss\b/i], ['Assembly', /\bassembly\b/i], ['R', /^\W*(?:the\s+)?(?:r|are)\W*$/i],
+  ['HTML', /\bhtml\b/i], ['CSS', /\bcss\b/i], ['Assembly', /\bassembly\b|\basm\b/i], ['MATLAB', /\bmat\s?lab\b/i],
+  ['Julia', /\bjulia\b/i], ['Haskell', /\bhaskell\b/i], ['Elixir', /\belixir\b/i], ['Erlang', /\berlang\b/i],
+  ['Clojure', /\bclojure\b/i], ['OCaml', /\bo\s?caml\b/i], ['Lisp', /\b(?:common )?lisp\b|\bscheme\b|\bracket\b/i],
+  ['Zig', /\bzig\b/i], ['Fortran', /\bfortran\b/i], ['COBOL', /\bcobol\b/i], ['Pascal', /\b(?:pascal|delphi)\b/i],
+  ['Solidity', /\bsolidity\b/i], ['Groovy', /\bgroovy\b/i], ['Prolog', /\bprolog\b/i], ['Ada', /\bada\b/i],
+  ['R', /^\W*(?:the\s+)?(?:r|are)\W*$/i],
 ];
 function language(text, answer = false) {
   const t = String(text || '');
@@ -29,8 +36,8 @@ function language(text, answer = false) {
   if (answer) return find(t);
   // "… in C", "C language", "Python programming", "teach me C", "learn Java".
   return find((/\b(?:in|using|with)\s+(.{1,24})/i.exec(t) || [])[1])
-    || find((/(?:^|\s)(\S{1,12}(?:\s+(?:plus\s+plus|sharp|script))?)\s+(?:language|programming|lang|course|lessons?|class)\b/i.exec(t) || [])[1])
-    || find((/\b(?:teach me|tutor me (?:on|in)|learn|basics of|intro to)\s+(\S{1,12}(?:\s+(?:plus\s+plus|sharp|script))?)\s*[.?!]?$/i.exec(t) || [])[1]);
+    || find((/(?:^|\s)(\S{1,12}(?:\s+(?:plus\s+plus|sharp|script|c|basic))?)\s+(?:language|programming|lang|course|lessons?|class)\b/i.exec(t) || [])[1])
+    || find((/\b(?:teach me|tutor me (?:on|in)|learn|basics of|intro to)\s+(\S{1,12}(?:\s+(?:plus\s+plus|sharp|script|c|basic))?)\s*[.?!]?$/i.exec(t) || [])[1]);
 }
 
 function intent(text) {
@@ -91,7 +98,7 @@ function command(text, waiting) {
 // kind) come along, so Max can follow calls between them.
 const EDITORS = [['Code', 'Code'], ['Code - Insiders', 'Code - Insiders'], ['Cursor', 'Cursor'], ['Windsurf', 'Windsurf'],
   ['Antigravity', 'Antigravity'], ['Antigravity', 'Antigravity IDE'], ['VSCodium', 'VSCodium']];   // [process, %APPDATA% folder]
-const SOURCE = /\.(c|h|cc|cpp|cxx|hpp|hh|cs|java|kt|kts|py|js|mjs|cjs|jsx|ts|tsx|go|rs|rb|php|swift|dart|scala|lua|pl|r|sql|sh|bash|ps1|html|css|scss|vue|svelte|m|hs|asm|s)$/i;
+const SOURCE = /\.(c|h|cc|cpp|cxx|hpp|hh|cs|java|kt|kts|py|js|mjs|cjs|jsx|ts|tsx|go|rs|rb|php|swift|dart|scala|lua|pl|r|sql|sh|bash|ps1|html|htm|css|scss|sass|less|vue|svelte|m|mm|hs|asm|s|jl|ex|exs|erl|hrl|clj|cljs|fs|fsx|ml|mli|lisp|lsp|scm|rkt|zig|f|f90|f95|for|cob|cbl|vb|bas|pas|dpr|sol|groovy|gradle|pro|adb|ads)$/i;
 const SKIP_DIRS = new Set(['node_modules', '.git', '.venv', 'venv', 'env', '__pycache__', 'dist', 'build', 'out', 'target', 'bin', 'obj', '.idea', '.vscode', '.next']);
 
 function editorTitles() {

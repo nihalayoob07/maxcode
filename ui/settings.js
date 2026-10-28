@@ -30,6 +30,31 @@
   $('#saveKey').onclick = saveKey;
   $('#key').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveKey(); });
 
+  // ---------- The ElevenLabs key (Max's voice and ears) ----------
+  async function voiceState() {
+    const has = await window.max.hasVoiceKey();
+    $('#voiceSteps').hidden = has;
+    $('#voiceMsg').className = 'msg';
+    $('#voiceMsg').textContent = has ? 'Saved. Click the mic in Max\'s panel, or press Call Max twice, to talk.' : 'Without it Max only types.';
+  }
+  $('#getVoiceKey').onclick = (e) => { e.preventDefault(); window.max.openKeyPage('voice'); };
+  async function saveVoiceKey() {
+    const msg = $('#voiceMsg');
+    msg.className = 'msg';
+    msg.textContent = 'Checking the key with ElevenLabs…';
+    $('#saveVoiceKey').disabled = true;
+    try {
+      await window.max.setVoiceKey($('#voiceKey').value);
+      $('#voiceKey').value = '';
+      await voiceState();
+    } catch (e) {
+      msg.className = 'msg bad';
+      msg.textContent = clean(e);
+    } finally { $('#saveVoiceKey').disabled = false; }
+  }
+  $('#saveVoiceKey').onclick = saveVoiceKey;
+  $('#voiceKey').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveVoiceKey(); });
+
   // ---------- The call shortcut: click the box, press the keys ----------
   const pretty = (acc) => acc.replace('Control', 'Ctrl').replace('Super', 'Win').replace(/\+/g, ' + ');
   let call = '';
@@ -69,11 +94,14 @@
     $('#onTop').checked = p.onTop;
     $('#login').checked = p.login;
     $('#theme').value = p.theme;
+    $('#level').value = p.level;
   })();
   $('#onTop').onchange = (e) => window.max.setPref('onTop', e.target.checked);
   $('#login').onchange = (e) => window.max.setPref('login', e.target.checked);
   $('#theme').onchange = (e) => window.max.setPref('theme', e.target.value);
+  $('#level').onchange = (e) => window.max.setPref('level', e.target.value);
   $('#quit').onclick = () => window.max.quit();
 
   keyState();
+  voiceState();
 })();

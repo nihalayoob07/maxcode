@@ -29,6 +29,16 @@ body.pet #panel { display: none; }
 @keyframes glow { from { opacity: 0.4; } to { opacity: 1; } }
 
 
+/* Talking: the mic in the title bar, what Max heard, and Max's headphones pulsing while he listens */
+#mic.listening { color: var(--red); animation: rec 1s ease-in-out infinite alternate; }
+#mic.hearing { color: var(--blue-text); }
+@keyframes rec { to { opacity: 0.45; } }
+.heard {
+  position: absolute; left: 12px; right: 12px; bottom: 62px; z-index: 6; padding: 8px 12px; border-radius: 10px;
+  background: var(--solid); border: 1px solid var(--line-strong); box-shadow: var(--shadow); font-size: 14px;
+}
+body.listening #chibi .me { animation: bob 0.5s ease-in-out infinite alternate; }
+
 /* The tutor, squeezed into the panel */
 #panel .home { padding: 20px 16px; }
 #panel .home h1 { font-size: 22px; }

@@ -9,7 +9,9 @@ He dresses for the time of day: pyjamas and a nightcap at night (with zzz after 
 - **Debug my code**: reads the file open in VS Code, Cursor or Windsurf, finds the bugs, and applies the fixes you accept.
 - **Debug a file / Explain code**: drop a file or paste a program.
 - **Ask anything**: "how do pointers work in C" gives a lesson with an example you can step through.
-- **Courses** (in his panel): C, C++, Python, Java, JavaScript, C#, Go, Rust. Progress is saved on the PC.
+- **Courses** (in his panel): 43 languages, from HTML, CSS, JavaScript, Python and SQL to Rust, Haskell, COBOL and Assembly, with a search box. Progress is saved on the PC.
+- **Talk to him**: click the mic in his panel (or press the call shortcut again while it's open) and speak; he answers out loud. Voice in and out is ElevenLabs, with your own key (optional: without it he types).
+- **Your level**: Beginner, Intermediate or Expert in Settings. Beginners get plain words and the simplest examples; experts get terse, precise answers with edge cases.
 - **Settings** (a normal window): the NVIDIA key, the call shortcut, theme, keep Max on top, start with Windows.
 - **Looks**: light theme is Paper (warm white, black ink); dark theme is Frost (translucent slate glass). It follows Windows unless you pick one in Settings.
 

@@ -27,6 +27,7 @@
 .home .acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .home .small { display: inline-block; margin-top: 32px; font-size: 13px; color: var(--muted); }
 .home .back { margin: 0 0 12px; }
+.home #courseFilter { margin-bottom: 12px; }
 .home .courses { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 .home .courses .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
 .home .courses .card b::after { content: none; }

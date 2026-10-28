@@ -2,14 +2,14 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // The same window.max the tutor page uses in the full app (app/preload.js), minus everything but the tutor.
-// No voice in Max Code: speaking does nothing.
+// The voice is ElevenLabs with the user's own key (main.js).
 contextBridge.exposeInMainWorld('max', {
-  onTutor: () => {},
+  onTutor: (fn) => ipcRenderer.on('tutor', (_e, job) => fn(job)),
   onStream: () => {},
-  onTts: () => {},
-  speak: () => Promise.resolve(),
-  cancelSpeak: () => {},
-  tutorState: () => {},
+  onTts: (fn) => ipcRenderer.on('tts', (_e, d) => fn(d)),
+  speak: (id, text) => ipcRenderer.invoke('speak', id, text),
+  cancelSpeak: (id) => ipcRenderer.send('cancelSpeak', id),
+  tutorState: (w) => ipcRenderer.send('tutorState', w),
   cancelChat: (id) => ipcRenderer.send('chat-cancel', id),
   tutorAsk: (id, messages, think) => ipcRenderer.invoke('tutorAsk', id, messages, !!think),
   course: (lang, data) => ipcRenderer.invoke('course', lang, data),
@@ -20,7 +20,12 @@ contextBridge.exposeInMainWorld('max', {
   // Max Code only
   hasKey: () => ipcRenderer.invoke('hasKey'),
   setKey: (key) => ipcRenderer.invoke('setKey', key),
-  openKeyPage: () => ipcRenderer.invoke('openKeyPage'),
+  openKeyPage: (which) => ipcRenderer.invoke('openKeyPage', which),
+  hasVoiceKey: () => ipcRenderer.invoke('hasVoiceKey'),
+  setVoiceKey: (key) => ipcRenderer.invoke('setVoiceKey', key),
+  transcribe: (audio) => ipcRenderer.invoke('transcribe', audio),
+  heard: (text, onScreen) => ipcRenderer.invoke('heard', text, onScreen),
+  onListen: (fn) => ipcRenderer.on('listen', () => fn()),
   intent: (text) => ipcRenderer.invoke('intent', text),
   editorCode: () => ipcRenderer.invoke('editorCode'),
   // The chibi and the settings window

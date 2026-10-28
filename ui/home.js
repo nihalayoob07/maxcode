@@ -3,10 +3,9 @@
 // tutor's own functions (lesson, pick, openCourse, debug, showDrop).
 'use strict';
 (() => {
-  const COURSES = ['C', 'C++', 'Python', 'Java', 'JavaScript', 'C#', 'Go', 'Rust'];
+  const COURSES = ['Python', 'JavaScript', 'TypeScript', 'HTML', 'CSS', 'SQL', 'Java', 'C', 'C++', 'C#', 'Go', 'Rust', 'Kotlin', 'Swift', 'Dart', 'PHP', 'Ruby', 'Bash', 'PowerShell', 'Lua', 'Perl', 'R', 'MATLAB', 'Julia', 'Scala', 'Haskell', 'Elixir', 'Erlang', 'Clojure', 'F#', 'OCaml', 'Lisp', 'Objective-C', 'Assembly', 'Zig', 'Fortran', 'COBOL', 'Visual Basic', 'Pascal', 'Solidity', 'Groovy', 'Prolog', 'Ada'];
 
-  // Title bar: Home; no voice here, so no mute; keep-on-top is a setting; close puts Max back to sitting.
-  $('#mute').remove();
+  // Title bar: Home, the mic (voice.js) and mute; keep-on-top is a setting; close puts Max back to sitting.
   $('#pin').remove();
   $('.brand').textContent = 'Max Code';
   $('#close').title = 'Close';
@@ -34,6 +33,7 @@
       <a href="#" class="small back" id="coursesBack">← Back</a>
       <h1>Courses</h1>
       <p>Max teaches a language lesson by lesson. Progress is saved on this PC.</p>
+      <input id="courseFilter" placeholder="Find a language" autocomplete="off" spellcheck="false">
       <div class="courses" id="courses"></div>
     </div>
   </section>`);
@@ -62,7 +62,13 @@
     }));
     $('#start').hidden = $('#nokey').hidden = true;
     $('#courseBox').hidden = false;
+    $('#courseFilter').value = '';
+    $('#courseFilter').focus();
   }
+  $('#courseFilter').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    for (const b of $('#courses').children) b.hidden = !b.firstChild.textContent.toLowerCase().includes(q);
+  });
   $('#coursesBack').onclick = (e) => { e.preventDefault(); home(); };
 
   async function go(what) {
@@ -103,6 +109,7 @@
 
   // Opening the panel, or closing Settings (the key may have just been added), refreshes the menu.
   const refresh = () => { if (!$('#home').hidden) home(); };
+  window.max.onTutor(leave);   // a spoken request (main.js) opens on the tutor page
   window.max.onMode((m) => { if (m === 'panel') refresh(); });
   window.max.onKeyChanged(refresh);
 
