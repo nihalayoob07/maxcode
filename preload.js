@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('max', {
   hasPlusKey: () => ipcRenderer.invoke('hasPlusKey'),
   setPlusKey: (key) => ipcRenderer.invoke('setPlusKey', key),
   buyPlus: () => ipcRenderer.invoke('buyPlus'),
+  fitSettings: (h) => ipcRenderer.send('fitSettings', h),
   transcribe: (audio) => ipcRenderer.invoke('transcribe', audio),
   heard: (text, onScreen) => ipcRenderer.invoke('heard', text, onScreen),
   onListen: (fn) => ipcRenderer.on('listen', () => fn()),

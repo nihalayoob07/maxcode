@@ -357,6 +357,7 @@ const menu = () => Menu.buildFromTemplate([
 ]);
 ipcMain.on('petMenu', () => menu().popup({ window: win }));
 ipcMain.on('openSettings', openSettings);
+ipcMain.on('fitSettings', (_e, h) => settings && !settings.isDestroyed() && settings.setContentSize(340, Math.min(Math.ceil(h), screen.getPrimaryDisplay().workArea.height - 60)));
 // With the panel open the window is a see-through rectangle bigger than the panel and Max: over its empty parts, clicks
 // go to whatever is behind it. Checked from the mouse position (the page's forwarded mouse moves aren't reliable on
 // Windows); the panel sits 10 px in from the top and sides and ends 134 px up (pet.css), Max is the bottom-right 120x130.

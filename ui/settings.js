@@ -10,7 +10,15 @@
     for (const p of document.querySelectorAll('[data-pane]')) p.hidden = p.dataset.pane !== name;
   }
   for (const b of document.querySelectorAll('[data-tab]')) b.onclick = () => tab(b.dataset.tab);
-  $('.panes').style.minHeight = `${Math.max(...[...document.querySelectorAll('[data-pane]')].map((p) => p.offsetHeight))}px`;
+  // As tall as the tallest tab, measured once the key messages have loaded (they change the Keys tab's height).
+  function fit() {
+    const panes = [...document.querySelectorAll('[data-pane]')], open = panes.find((p) => !p.hidden);
+    panes.forEach((p) => { p.hidden = false; });
+    $('.panes').style.minHeight = '';
+    $('.panes').style.minHeight = `${Math.max(...panes.map((p) => p.offsetHeight))}px`;
+    panes.forEach((p) => { p.hidden = p !== open; });
+    window.max.fitSettings($('.homebox').offsetHeight + 30);
+  }
   tab('general');
 
   // ---------- The key ----------
@@ -158,7 +166,5 @@
   $('#wake').onchange = (e) => window.max.setPref('wake', e.target.checked);
   $('#quit').onclick = () => window.max.quit();
 
-  keyState();
-  voiceState();
-  plusState();
+  Promise.all([keyState(), voiceState(), plusState()]).then(fit);
 })();
