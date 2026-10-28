@@ -2,7 +2,7 @@
 // Vercel), which holds Nihal's NVIDIA and ElevenLabs keys and gives each install a daily allowance. A user who adds
 // their own keys (kept encrypted on this PC with safeStorage) goes straight to NVIDIA / ElevenLabs, with no limits. The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
-const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, screen, shell } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
@@ -19,6 +19,7 @@ const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); }
 // A random id for this install, made on first run: what the server counts the daily allowance against.
 let install = '';
 function installId() {
+  if (process.env.MAXCODE_TEST_SCREEN) return 'maxcode-test-run-0001';   // test runs don't use up the real install's allowance
   const f = path.join(app.getPath('userData'), 'install-id');
   try { install ||= fs.readFileSync(f, 'utf8').trim(); } catch {}
   if (!install) fs.writeFileSync(f, (install = require('crypto').randomUUID()));
@@ -357,21 +358,41 @@ function bindKeys({ call, talk } = prefs) {
 // hidden, NVIDIA's vision model finds the code, an overlay points at it and asks "Is this it?" (or lets you drag a
 // box around it), then the model reads that part out at full resolution. If the same code is open in an editor,
 // that file is used instead, so fixes can be saved to it.
+// Windows PowerShell for the two things Electron can't do reliably here: copy one exact screen, and OCR (below).
+function powershell(script, env, ms = 20000) {
+  return new Promise((resolve, reject) => require('child_process').execFile('powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+    { env: { ...process.env, ...env }, timeout: ms, windowsHide: true, maxBuffer: 8e6 }, (err, stdout) => (err ? reject(err) : resolve(stdout))));
+}
+// The screen under the mouse, copied by its exact rectangle in real pixels. (Electron's desktopCapturer doesn't always
+// say which picture is which screen; with two monitors it handed over the other one.) DPI-aware, so a scaled display
+// is copied at full size. Max's own see-through windows aren't in the copy; Settings is made invisible for it.
+const SHOT = `Add-Type -AssemblyName System.Drawing
+Add-Type -Name Dpi -Namespace MaxCode -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+$null = [MaxCode.Dpi]::SetProcessDPIAware()
+$r = $env:MAXCODE_RECT -split ','
+$b = New-Object System.Drawing.Bitmap ([int]$r[2]), ([int]$r[3])
+$g = [System.Drawing.Graphics]::FromImage($b)
+$g.CopyFromScreen([int]$r[0], [int]$r[1], 0, 0, $b.Size)
+$b.Save($env:MAXCODE_SHOT, [System.Drawing.Imaging.ImageFormat]::Png)`;
 async function capture() {
   // Tests: MAXCODE_TEST_SCREEN=image.png stands in for the screen (no real screen is captured).
   if (process.env.MAXCODE_TEST_SCREEN) return { display: screen.getPrimaryDisplay(), img: nativeImage.createFromPath(process.env.MAXCODE_TEST_SCREEN) };
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const px = screen.dipToScreenRect(null, display.bounds);
+  const file = path.join(app.getPath('temp'), `maxcode-shot-${process.pid}.png`);
   const others = [win, settings].filter((w) => w && !w.isDestroyed());
   others.forEach((w) => w.setOpacity(0));
   await new Promise((r) => setTimeout(r, 180));
   try {
-    const sf = display.scaleFactor;
-    const sources = await desktopCapturer.getSources({ types: ['screen'],
-      thumbnailSize: { width: Math.round(display.size.width * sf), height: Math.round(display.size.height * sf) } });
-    const src = sources.find((s) => s.display_id === String(display.id)) || sources[0];
-    if (!src || src.thumbnail.isEmpty()) throw new Error("I couldn't capture the screen.");
-    return { display, img: src.thumbnail };
-  } finally { others.forEach((w) => !w.isDestroyed() && w.setOpacity(1)); }
+    await powershell(SHOT, { MAXCODE_RECT: [px.x, px.y, px.width, px.height].join(','), MAXCODE_SHOT: file });
+    const img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) throw new Error('empty');
+    return { display, img };
+  } catch { throw new Error("I couldn't capture the screen."); } finally {
+    others.forEach((w) => !w.isDestroyed() && w.setOpacity(1));
+    fs.rm(file, () => {});
+  }
 }
 // The model takes inline images up to ~180 KB: smaller JPEGs until it fits.
 function shrink(img, maxW) {
@@ -430,16 +451,10 @@ ConvertTo-Json -Compress @($ocr.Lines | ForEach-Object {
   @{ t = $_.Text; x0 = ($r | ForEach-Object { $_.X } | Measure-Object -Minimum).Minimum; y0 = ($r | ForEach-Object { $_.Y } | Measure-Object -Minimum).Minimum;
      x1 = ($r | ForEach-Object { $_.X + $_.Width } | Measure-Object -Maximum).Maximum; y1 = ($r | ForEach-Object { $_.Y + $_.Height } | Measure-Object -Maximum).Maximum }
 })`;
-function ocr(img) {
+async function ocr(img) {
   const file = path.join(app.getPath('temp'), `maxcode-ocr-${process.pid}.png`);
   fs.writeFileSync(file, img.toPNG());
-  return new Promise((resolve) => {
-    require('child_process').execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(OCR, 'utf16le').toString('base64')],
-      { env: { ...process.env, MAXCODE_OCR: file }, timeout: 20000, windowsHide: true, maxBuffer: 8e6 }, (err, stdout) => {
-        fs.rm(file, () => {});
-        try { resolve(err ? [] : [].concat(JSON.parse(stdout || '[]'))); } catch { resolve([]); }
-      });
-  });
+  try { return [].concat(JSON.parse(await powershell(OCR, { MAXCODE_OCR: file }) || '[]')); } catch { return []; } finally { fs.rm(file, () => {}); }
 }
 // How alike two lines are (0-1): shared pairs of letters, ignoring spaces and case (OCR drops and adds those).
 function alike(a, b) {
@@ -492,9 +507,10 @@ async function findOnScreen(img, code, display) {
 ipcMain.handle('screenCode', async () => {
   const { display, img } = await capture();
   const read = await look(() => 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code on screen, reply {"code":""}.',
-    img, 1600, 4000).catch(() => null);
+    img, 1600, 4000);   // a failure here (a daily limit, no internet) is the answer: say it, don't pretend there's no code
   const box = read?.out?.code ? await findOnScreen(img, String(read.out.code), display).catch(() => null) : null;
   const found = { out: { lang: read?.out?.lang } };
+  if (process.env.MAXCODE_TEST_SCREEN) console.log('[screen] first read:', JSON.stringify(read?.out), '| located:', box);
   if (box) win.webContents.send('say', 'Is this the code?');
   const answer = await pointAt(display, box);
   if (!answer) return null;
