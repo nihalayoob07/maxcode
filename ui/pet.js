@@ -156,7 +156,7 @@
   chibi.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     chibi.setPointerCapture(e.pointerId);
-    start = last = { x: e.screenX, y: e.screenY };
+    start = last = { x: e.screenX, y: e.screenY, t: Date.now() };
     dragged = false;
   });
   // Easter eggs: a reaction plays for a while (pet.css draws each one).
@@ -182,7 +182,8 @@
   let pokes = 0, pokeTimer = null;
   chibi.addEventListener('pointerup', () => {
     if (start && dragged && flips.length >= 6) react('dizzy', 3000);
-    if (start && !dragged) {
+    // A quick tap is a click; a press held longer is grabbing him, even if he isn't moved: it never opens or closes the menu.
+    if (start && !dragged && Date.now() - start.t < 300) {
       pokes++;
       clearTimeout(pokeTimer);
       if (pokes >= 3) { pokes = 0; react('dizzy', 3000); }
