@@ -7,11 +7,16 @@
   const COMMON = ['Python', 'JavaScript', 'HTML', 'CSS', 'Java', 'C', 'C++', 'C#', 'SQL'];
   const COURSES = ['Python', 'JavaScript', 'TypeScript', 'HTML', 'CSS', 'SQL', 'Java', 'C', 'C++', 'C#', 'Go', 'Rust', 'Kotlin', 'Swift', 'Dart', 'PHP', 'Ruby', 'Bash', 'PowerShell', 'Lua', 'Perl', 'R', 'MATLAB', 'Julia', 'Scala', 'Haskell', 'Elixir', 'Erlang', 'Clojure', 'F#', 'OCaml', 'Lisp', 'Objective-C', 'Assembly', 'Zig', 'Fortran', 'COBOL', 'Visual Basic', 'Pascal', 'Solidity', 'Groovy', 'Prolog', 'Ada'];
 
-  // Title bar: Home, the mic (voice.js) and mute; keep-on-top is a setting; close puts Max back to sitting.
+  // Title bar: ⌂ Home on the left, then what's open, the mic (voice.js), mute and close (puts Max back to sitting).
+  // The tutor's own buttons (Simpler, Line by line, Lessons) get a row under it, so Home and close always fit.
   $('#pin').remove();
-  $('.brand').textContent = 'Max Code';
+  $('.brand').outerHTML = `<button class="icon" id="homeBtn" title="Home" aria-label="Home">
+    <svg viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5M6.5 9.5V19h11V9.5"/></svg></button>`;
   $('#close').title = 'Close';
-  $('#close').insertAdjacentHTML('beforebegin', '<button class="chip" id="homeBtn">Home</button>');
+  const tools = document.createElement('div');
+  tools.className = 'toolrow';
+  tools.append($('#simple'), $('#trace'), $('#lessons'));
+  $('.bar').after(tools);
 
   document.body.insertAdjacentHTML('beforeend', `
   <section class="home" id="home">

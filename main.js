@@ -270,7 +270,7 @@ function savePrefs() {
 // ponytail: always grows up-left, so near the left/top edge the clamp nudges Max over; flip sides if that bothers.
 function boundsFor(size) {
   const area = screen.getPrimaryDisplay().workArea;
-  const right = prefs.right ?? area.x + area.width - 24, bottom = prefs.bottom ?? area.y + area.height;
+  const right = prefs.right ?? area.x + area.width - 24, bottom = area.y + area.height;   // always on the taskbar
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
   return {
     x: clamp(right - size.width, area.x, area.x + area.width - size.width),
@@ -310,9 +310,10 @@ ipcMain.handle('tutorWin', (_e, what) => {   // the tutor's close / minimise put
   return prefs.onTop;
 });
 ipcMain.on('mode', (_e, m) => setMode(['hide', 'panel'].includes(m) ? m : 'pet'));
-ipcMain.on('drag', (_e, dx, dy) => {
-  const [x, y] = win.getPosition();
-  win.setPosition(Math.round(x + dx), Math.round(y + dy));
+// Dragging slides him along the taskbar; he never leaves it.
+ipcMain.on('drag', (_e, dx) => {
+  const area = screen.getPrimaryDisplay().workArea, b = win.getBounds();
+  win.setPosition(Math.round(Math.max(area.x, Math.min(b.x + dx, area.x + area.width - b.width))), b.y);
   rememberCorner();
 });
 ipcMain.on('petMenu', () => Menu.buildFromTemplate([
@@ -471,7 +472,6 @@ function open() {
   });
   bindKeys();
   if (prefs.wake) setTimeout(() => asr().catch(() => {}), 5000);   // warm Whisper up (downloads it the first time)
-  win.on('moved', rememberCorner);   // dragged by the panel's title bar
 }
 // Links open in the browser, never inside the app (both windows).
 app.on('web-contents-created', (_e, wc) => wc.setWindowOpenHandler(({ url }) => {

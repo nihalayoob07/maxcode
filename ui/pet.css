@@ -2,7 +2,7 @@
 html, body { background: transparent; }
 body { display: block; position: relative; }
 #panel {
-  position: absolute; left: 10px; top: 10px; right: 10px; bottom: 116px; display: flex; flex-direction: column;
+  position: absolute; left: 10px; top: 10px; right: 10px; bottom: 134px; display: flex; flex-direction: column;
   background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
   transform: translateZ(0);   /* fixed children (home, drop box) are placed inside the panel */
 }
@@ -39,6 +39,14 @@ body.pet #panel { display: none; }
 }
 body.listening #chibi .me { animation: bob 0.5s ease-in-out infinite alternate; }
 
+/* The panel's title bar: compact icons; it doesn't drag (Max lives on the taskbar) */
+#panel .bar { padding-left: 2px; gap: 6px; -webkit-app-region: no-drag; }
+#panel .bar .icon { width: 34px; }
+#panel .bar .icon.x { width: 40px; }
+#panel .what { flex: 1; }
+.toolrow { display: flex; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.toolrow:not(:has(> :not([hidden]))) { display: none; }
+
 /* The tutor, squeezed into the panel */
 #panel .home { padding: 20px 16px; }
 #panel .home h1 { font-size: 22px; }
@@ -60,7 +68,7 @@ body.hide #chibi { display: none; }
 @keyframes rise { from { transform: translateY(105%); } }
 
 /* Costumes (costume.js puts c-* on <body>; each .k-* layer shows only in its costume) */
-.k, #chibi .mouth-o, #chibi .sparkles { display: none; }
+svg .k, #chibi .mouth-o, #chibi .sparkles { display: none; }   /* costume layers only: .k is also the code highlighter's keyword class */
 body.c-pyjamas .k-pyjamas, body.c-nightcap .k-nightcap, body.c-owl .k-owl, body.c-sleepy .k-sleepy, body.c-lunch .k-lunch,
 body.c-cap .k-cap, body.c-halloween .k-halloween, body.c-santa .k-santa, body.c-party .k-party { display: inline; }
 body.c-pyjamas #chibi .shirt, body.c-pyjamas #hand .sleeve { fill: #3d4f9c; stroke: #2f3d7a; }

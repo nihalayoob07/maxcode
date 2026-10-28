@@ -463,35 +463,46 @@ async function debug(files, { editor, dirty } = {}) {
   S.files = files.map((f) => ({ ...f, code: f.code.replace(/\r\n/g, '\n') }));
   S.lang = langOf(files[0].name); S.title = files[0].name;
   render();
-  // Two passes: a quick one without reasoning (~10 s) so you see the obvious problems at once, then a careful one with
-  // reasoning (~2 min) in the background that adds what the quick one missed (integer division, off-by-one...).
-  const ask = (careful) => askMax(`Debug this code. Find every real problem: syntax errors, runtime errors (crashes, out-of-bounds, null or uninitialised use, infinite loops, wrong types) and logic errors (it doesn't do what it's clearly meant to, e.g. integer division where a fraction is wanted). Don't run anything: trace it in your head. No style nitpicks.
-${S.files.length > 1 ? `These files belong together; the first is the one open in the editor.` : ''}
-${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code)}`).join('\n\n')}
-Reply exactly in this shape:
+  // Two passes: a quick one without reasoning (~10 s) so you see the result at once, then a careful one with reasoning
+  // that checks it: it drops false alarms and adds anything real the quick one missed. Small models like to find
+  // *something*, so both are told plainly that a correct program has no errors.
+  const RULES = `Report only problems that really happen when this exact code runs, or that stop it compiling: syntax errors, crashes, out-of-bounds or uninitialised use, infinite loops, wrong results. Trace it in your head; don't run anything.
+- A correct program has no errors: then errors is []. Most short programs are correct. Never invent a problem to have something to say.
+- No style, naming, formatting or "could be better" remarks, and no warnings about input the program never gets.
+- A logic error only counts if the code clearly doesn't do what its own names, comments or printed text say it is for.`;
+  const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code)}`).join('\n\n')}`;
+  const SHAPE = `Reply exactly in this shape:
 {"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
-kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].`,
-  careful ? 'Max is double-checking for subtler bugs' : `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`, careful);
-  const r = await ask(false);
+kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].`;
+  const r = await askMax(`Debug this code. ${RULES}\n${code}\n${SHAPE}`,
+    `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`);
   if (!r) return;
   const unsaved = dirty ? ` (${files[0].name} has unsaved changes in ${editor || 'your editor'}: I read the saved version.)` : '';
   S.lang ||= String(r.lang || '');
-  S.notes = errorNotes(r).map((n, i) => ({ ...n, n: i + 1 }));
-  const summary = () => (S.notes.length ? `${S.notes.length} problem${S.notes.length > 1 ? 's' : ''}: ${r.summary || ''}`.trim() : (r.summary || 'No problems found.')) + unsaved;
-  task(summary(), S.notes.length ? 'bad' : '', S.notes.length ? 'DEBUG' : 'ALL CLEAR');
-  if (S.notes.length) { S.at = 0; S.fi = S.notes[0].fi; }
-  render();
-  say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}` : String(r.summary || "I couldn't find any problems in it."));
-  const deep = await ask(true);
+  const show = (res) => {
+    S.notes = errorNotes(res).map((n, i) => ({ ...n, n: i + 1 }));
+    S.at = 0; S.answer = null; S.showFix = false;
+    if (S.notes.length) S.fi = S.notes[0].fi;
+    const summary = (S.notes.length ? `${S.notes.length} problem${S.notes.length > 1 ? 's' : ''}: ${res.summary || ''}`.trim() : 'No problems found. ' + (res.summary || '')).trim() + unsaved;
+    task(summary, S.notes.length ? 'bad' : '', S.notes.length ? 'DEBUG' : 'ALL CLEAR');
+    render();
+  };
+  show(r);
+  const first = S.notes.map((n) => n.line);
+  say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}` : "I couldn't find any problems in it. I'll double-check.");
+  const prior = (r.errors || []).map((e) => `- line ${e.line}: ${e.title || e.kind || ''}: ${e.say}`).join('\n') || '- nothing';
+  const deep = await askMax(`Double-check this code. ${RULES}
+A quick first look reported:
+${prior}
+Check each of those against the code: keep only the ones that really happen, and add any real problem it missed. Reply with the full, corrected list.
+${code}
+${SHAPE}`, 'Max is double-checking', true);
   if (!deep || S.kind !== 'debug') return;
-  // New ones only: an error on a line that already has one is the same error.
-  const more = errorNotes(deep).filter((d) => !S.notes.some((n) => n.fi === d.fi && Math.abs(n.line - d.line) <= 1));
-  if (!more.length) return task(summary(), S.notes.length ? 'bad' : '', S.notes.length ? 'DEBUG' : 'ALL CLEAR');
-  for (const d of more) S.notes.push({ ...d, n: S.notes.length + 1 });
-  task(summary(), 'bad', 'DEBUG');
-  render();
-  const first = S.notes[S.notes.length - more.length];
-  say(`Double-checked, and I found ${more.length === 1 ? 'one more' : `${more.length} more`}. Number ${first.n}, line ${first.line}. ${first.say}`);
+  const checked = errorNotes(deep);
+  if (checked.length === first.length && checked.every((c, i) => Math.abs(c.line - first[i]) <= 1)) return;   // it agrees
+  show(deep);
+  say(!S.notes.length ? 'I double-checked, and those were false alarms. Your code looks right.'
+    : `I double-checked, and it's ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}`);
 }
 // Max's errors as notes on the files (the line found by its text); a fix that can't be placed exactly gets no Fix button.
 function errorNotes(r) {

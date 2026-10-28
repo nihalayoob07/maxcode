@@ -1,6 +1,6 @@
 // Max as a small chibi (main.js sizes the window). He hides under the bottom of the screen with a hand peeking out;
 // click the hand (or the call shortcut, set in Settings) and he rises. Click him to open the tutor as a panel above him, drag him anywhere,
-// right-click for Settings and Quit. He looks at his laptop while NVIDIA answers, and hides after 5 idle minutes.
+// right-click for Settings and Quit. He looks at his laptop while NVIDIA answers, and hides after a minute idle.
 'use strict';
 (() => {
   // The tutor page goes into a panel; fixed overlays (home, drop box) stay inside it (pet.css).
@@ -223,7 +223,7 @@
   hand.addEventListener('click', () => window.max.mode('pet'));
   hand.addEventListener('contextmenu', (e) => { e.preventDefault(); window.max.petMenu(); });
 
-  // Back into hiding after 5 minutes with no clicks, typing or answers coming in.
+  // Back into hiding after a minute with no clicks, typing or answers coming in.
   // What he's wearing (costume.js): checked every minute.
   const dress = () => {
     for (const c of [...cls].filter((c) => c.startsWith('c-'))) cls.remove(c);
@@ -244,14 +244,14 @@
   }).observe($('#code'), { childList: true, subtree: true });
   chibi.addEventListener('animationend', (e) => { if (e.animationName === 'jump') chibi.classList.remove('cheer'); });
 
-  const IDLE = 5 * 60 * 1000;
+  const IDLE = 60 * 1000;   // back into hiding after a minute idle
   let lastActive = Date.now();
   const active = () => { lastActive = Date.now(); chibi.classList.remove('nap'); };
   for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) document.addEventListener(ev, active, { passive: true });
   setInterval(() => {
     if (!$('#busy').hidden) return active();
-    // Sitting with nothing to do for 2.5 minutes: he nods off (a hover wakes him).
-    if (cls.contains('pet') && !cls.contains('hide') && Date.now() - lastActive > 150000) chibi.classList.add('nap');
+    // Sitting with nothing to do for 40 s: he nods off (a hover wakes him) before he hides at a minute.
+    if (cls.contains('pet') && !cls.contains('hide') && Date.now() - lastActive > 40000) chibi.classList.add('nap');
     if (!cls.contains('hide') && Date.now() - lastActive > IDLE) window.max.mode('hide');
   }, 10000);
   // Thinking pose while the tutor waits on NVIDIA (tutor.js shows #busy).
