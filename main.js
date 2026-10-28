@@ -450,29 +450,48 @@ function alike(a, b) {
   return (2 * both) / (na + nb);
 }
 async function findOnScreen(img, code, display) {
-  const lines = code.split('\n').map((l) => l.trim()).filter((l) => l.length >= 3);
+  const all = code.split('\n');
+  const lines = all.map((l, i) => ({ t: l.trim(), i })).filter((l) => l.t.length >= 3);
   if (!lines.length) return null;
   const seen = await ocr(img);
-  const hits = [];
+  const hits = [];   // OCR lines matched to the code's lines, with i: which line of the code
   for (const l of lines) {
     let best = null, score = 0.55;
-    for (const o of seen) { const sc = alike(l, String(o.t)); if (sc > score) { score = sc; best = o; } }
-    if (best) hits.push(best);
+    for (const o of seen) { const sc = alike(l.t, String(o.t)); if (sc > score) { score = sc; best = o; } }
+    if (best) hits.push({ ...best, i: l.i });
   }
-  if (hits.length < Math.min(2, lines.length) && !(lines.length === 1 && hits.length)) return null;
-  // The main block: hits near the middle one (a stray match elsewhere on screen doesn't stretch the box).
+  if (!hits.length || (hits.length < 2 && lines.length > 1)) return null;
+  // The main block: the biggest run of matched lines that sit together. A stray match elsewhere (the file's name in a
+  // tab title matching its #include line, say) is a run of its own and doesn't stretch the box.
   hits.sort((a, b) => a.y0 - b.y0);
-  const mid = hits[Math.floor(hits.length / 2)];
-  const block = hits.filter((h) => Math.abs(h.y0 - mid.y0) < 40 * lines.length + 200);
+  const lineH = hits.map((h) => h.y1 - h.y0).sort((a, b) => a - b)[Math.floor(hits.length / 2)] || 20;
+  const runs = [[hits[0]]];
+  for (const h of hits.slice(1)) {
+    const run = runs[runs.length - 1];
+    if (h.y0 - run[run.length - 1].y1 > 5 * lineH) runs.push([h]); else run.push(h);
+  }
+  const block = runs.reduce((x, y) => (y.length > x.length ? y : x));
+  // Lines OCR missed (short ones like "}", or ones with squiggles under them) still belong in the box: the first and
+  // last lines of the code go where the spacing of the found ones puts them.
+  const top = block[0], bottom = block[block.length - 1];
+  const step = bottom.i > top.i ? (bottom.y0 - top.y0) / (bottom.i - top.i) : lineH * 1.35;
+  const first = all.findIndex((l) => l.trim()), last = all.length - 1 - [...all].reverse().findIndex((l) => l.trim());
+  // As wide as the longest line, by the width of the letters OCR found (long lines are often the ones it missed).
+  const charW = block.map((h) => (h.x1 - h.x0) / Math.max(1, String(h.t).length)).sort((a, b) => a - b)[Math.floor(block.length / 2)];
+  const x0 = Math.min(...block.map((h) => h.x0)), widest = Math.max(...all.map((l) => l.replace(/	/g, '    ').trimEnd().length));
   const k = display.size.width / img.getSize().width, pad = 18;
-  const box = [Math.min(...block.map((h) => h.x0)), Math.min(...block.map((h) => h.y0)), Math.max(...block.map((h) => h.x1)), Math.max(...block.map((h) => h.y1))]
-    .map((v) => v * k);
+  const box = [
+    x0,
+    Math.min(top.y0, top.y0 - (top.i - first) * step),
+    Math.max(...block.map((h) => h.x1), x0 + (widest + 2) * charW),
+    Math.max(bottom.y1, bottom.y1 + (last - bottom.i) * step),
+  ].map((v) => v * k);
   return [Math.max(0, box[0] - pad), Math.max(0, box[1] - pad), Math.min(display.size.width, box[2] + pad), Math.min(display.size.height, box[3] + pad)].map(Math.round);
 }
 
 ipcMain.handle('screenCode', async () => {
   const { display, img } = await capture();
-  const read = await look(() => 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"Python","code":"the code"}. If there is no code on screen, reply {"code":""}.',
+  const read = await look(() => 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code on screen, reply {"code":""}.',
     img, 1600, 4000).catch(() => null);
   const box = read?.out?.code ? await findOnScreen(img, String(read.out.code), display).catch(() => null) : null;
   const found = { out: { lang: read?.out?.lang } };
@@ -481,11 +500,15 @@ ipcMain.handle('screenCode', async () => {
   if (!answer) return null;
   const { width: iw, height: ih } = img.getSize(), f = iw / display.size.width, pad = 8;
   const [x0, y0, x1, y1] = answer.rect;
-  const cx = Math.max(0, Math.round(x0 * f) - pad), cy = Math.max(0, Math.round(y0 * f) - pad);
-  const crop = img.crop({ x: cx, y: cy, width: Math.min(iw - cx, Math.round((x1 - x0) * f) + 2 * pad), height: Math.min(ih - cy, Math.round((y1 - y0) * f) + 2 * pad) });
-  const { out } = await look(() => 'Transcribe the source code in this image exactly as written: every line, the same indentation, no line numbers, nothing fixed or added. Reply with only JSON: {"lang":"Python","code":"the code"}. If there is no code, reply {"code":""}.',
-    crop, 1800, 8000);
-  const code = String(out?.code || '').replace(/\r/g, '');
+  // Read with room to spare: OCR boxes stop short of long lines, and a dragged box is rarely exact.
+  const cx = Math.max(0, Math.round((x0 - 30) * f)), cy = Math.max(0, Math.round((y0 - 24) * f));
+  const cw = Math.min(iw - cx, Math.round((x1 - x0 + 30 + Math.max(160, (x1 - x0) * 0.6)) * f));
+  const ch = Math.min(ih - cy, Math.round((y1 - y0 + 48) * f));
+  const crop = img.crop({ x: cx, y: cy, width: cw, height: ch });
+  const { out } = await look(() => 'Transcribe the source code in this image exactly as written: every line, the same indentation, no line numbers, nothing fixed or added. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code, reply {"code":""}.',
+    crop, 1800, 8000).catch(() => ({ out: null }));
+  if (process.env.MAXCODE_TEST_SCREEN) console.log('[screen] first read:', JSON.stringify(read?.out), '| box:', box, '| crop:', crop.getSize(), '| re-read:', JSON.stringify(out));
+  const code = String(out?.code || (answer.rect === box || String(answer.rect) === String(box) ? read?.out?.code : '') || '').replace(/\r/g, '');
   if (!code.trim()) throw new Error("I couldn't read any code there. Try dragging a box around it.");
   const lang = String(out?.lang || found?.out?.lang || '');
   // The same code open in an editor: use that file, so fixes can be saved to it.

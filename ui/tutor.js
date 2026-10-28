@@ -468,7 +468,7 @@ async function debug(files, { editor, dirty } = {}) {
   // Two passes: a quick one without reasoning (~10 s) so you see the result at once, then a careful one with reasoning
   // that checks it: it drops false alarms and adds anything real the quick one missed. Small models like to find
   // *something*, so both are told plainly that a correct program has no errors.
-  const RULES = `Report only problems that really happen when this exact code runs, or that stop it compiling: syntax errors, crashes, out-of-bounds or uninitialised use, infinite loops, wrong results. Trace it in your head; don't run anything.
+  const RULES = `Report only problems that really happen when this exact code runs, or that stop it compiling: syntax errors, variables used without being declared or given a value, wrong types or format specifiers, crashes, out-of-bounds, infinite loops, wrong results. Check every line. Trace it in your head; don't run anything.
 - A correct program has no errors: then errors is []. Most short programs are correct. Never invent a problem to have something to say.
 - No style, naming, formatting or "could be better" remarks, and no warnings about input the program never gets.
 - A logic error only counts if the code clearly doesn't do what its own names, comments or printed text say it is for.`;
