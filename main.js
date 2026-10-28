@@ -2,7 +2,7 @@
 // Vercel), which holds Nihal's NVIDIA and ElevenLabs keys and gives each install a daily allowance. A user who adds
 // their own keys (kept encrypted on this PC with safeStorage) goes straight to NVIDIA / ElevenLabs, with no limits. The tutor (shared/, ui/tutor.*) came from max-assistant.
 'use strict';
-const { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, screen, shell } = require('electron');
+const { app, BrowserWindow, Tray, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, safeStorage, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
@@ -271,7 +271,7 @@ ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 // The hand is about half as wide as the chibi, with just the cuff and a bit of sleeve showing.
 const HIDE = { width: 48, height: 46 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
 const HAND_FOR = 2 * 60 * 1000;
-let win = null, settings = null, mode = 'hide';
+let win = null, settings = null, tray = null, mode = 'hide';
 let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', talk: 'Control+Alt+Space', wake: true, level: 'beginner' };   // theme: system | light (Paper) | dark (Frost)
 
 let saveTimer = null;
@@ -329,13 +329,15 @@ ipcMain.on('drag', (_e, dx) => {
   win.setPosition(Math.round(Math.max(area.x, Math.min(b.x + dx, area.x + area.width - b.width))), b.y);
   rememberCorner();
 });
-ipcMain.on('petMenu', () => Menu.buildFromTemplate([
+// Right-clicking Max or the tray icon.
+const menu = () => Menu.buildFromTemplate([
   { label: mode === 'panel' ? 'Sit down' : 'Open', click: () => setMode(mode === 'panel' ? 'pet' : 'panel') },
   { label: 'Hide', enabled: mode !== 'hide', click: () => setMode('hide') },
   { label: 'Settings', click: openSettings },
   { type: 'separator' },
   { label: 'Quit Max Code', click: () => app.quit() },
-]).popup({ window: win }));
+]);
+ipcMain.on('petMenu', () => menu().popup({ window: win }));
 ipcMain.on('openSettings', openSettings);
 // With the panel open the window is a see-through rectangle bigger than the panel and Max: over its empty parts, clicks
 // go to whatever is behind it. Checked from the mouse position (the page's forwarded mouse moves aren't reliable on
@@ -595,6 +597,11 @@ async function open() {
     if (!prefs.met) { prefs.met = true; savePrefs(); setMode('pet'); } else handTimer = setTimeout(() => win.hide(), HAND_FOR);
   });
   bindKeys();
+  // The tray icon: a click opens (or closes) his panel, right-click has the same menu as Max.
+  tray = new Tray(path.join(__dirname, 'assets', 'icon.ico'));
+  tray.setToolTip('Max Code');
+  tray.on('click', () => setMode(mode === 'panel' ? 'pet' : 'panel'));
+  tray.on('right-click', () => tray.popUpContextMenu(menu()));
   if (prefs.wake) setTimeout(() => asr().catch(() => {}), 5000);   // warm Whisper up (downloads it the first time)
 }
 // Links open in the browser, never inside the app (both windows).
