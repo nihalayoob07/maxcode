@@ -10,12 +10,12 @@ He dresses for the time of day: pyjamas and a nightcap at night (with zzz after 
 - **Debug a file / Explain code**: drop a file or paste a program.
 - **Ask anything**: "how do pointers work in C" gives a lesson with an example you can step through.
 - **Courses** (in his panel): the common languages up front, and 43 in all (Rust, Haskell, COBOL, Assembly…) through the search box. Progress is saved on the PC.
-- **Talk to him**: say "Max" ("Max, teach me Rust"), press **Ctrl+Alt+Space**, or click the mic. Listening runs on your PC with a small speech model that downloads itself the first time; no key needed. He answers out loud with an ElevenLabs key (optional).
+- **Talk to him**: say "Max" ("Max, teach me Rust"), press **Ctrl+Alt+T**, or click the mic. Listening runs on your PC with a small speech model that downloads itself the first time; no key needed. He answers out loud: about a minute a day free, more with your own ElevenLabs key or Max Plus.
 - **Your level**: Beginner, Intermediate or Expert in Settings. Beginners get plain words and the simplest examples; experts get terse, precise answers with edge cases.
 - **Settings** (three small tabs): General (level, theme, call shortcut, keep on top, start with Windows), Voice ("Max" on/off, talk shortcut), Keys.
 - **Looks**: light theme is Paper (warm white, black ink); dark theme is Frost (translucent slate glass). It follows Windows unless you pick one in Settings.
 
-It needs internet. Out of the box, answers (NVIDIA Nemotron) and Max's voice (ElevenLabs) come through the free Max Code server in `server/`, with a daily allowance per install. Add your own free NVIDIA key (and optionally an ElevenLabs key) in Settings → Keys to go direct with no limits; keys are stored encrypted on the PC (Windows DPAPI).
+**Free, with daily limits.** See [docs/GUIDE.md](docs/GUIDE.md) for the plans and keys (and [docs/SELLING.md](docs/SELLING.md) for setting up Max Plus). It needs internet. Out of the box, answers (NVIDIA Nemotron) and Max's voice (ElevenLabs) come through the free Max Code server in `server/`, with a daily allowance per install. Add your own free NVIDIA key (and optionally an ElevenLabs key) in Settings → Keys to go direct with no limits; keys are stored encrypted on the PC (Windows DPAPI).
 
 ## Install
 

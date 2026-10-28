@@ -13,6 +13,7 @@ const VL_MODEL = 'nvidia/nemotron-3.5-super-vl-120b-a12b';   // reads code off t
 const SERVER = 'https://maxcode-server-weld.vercel.app';
 const KEY_FILE = () => path.join(app.getPath('userData'), 'key.bin');
 const VOICE_KEY_FILE = () => path.join(app.getPath('userData'), 'voice-key.bin');
+const PLUS_KEY_FILE = () => path.join(app.getPath('userData'), 'plus-key.bin');   // a Max Plus licence (Lemon Squeezy)
 const COURSES = () => path.join(app.getPath('userData'), 'courses.json');
 const PREFS = () => path.join(app.getPath('userData'), 'prefs.json');
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; } };
@@ -126,7 +127,8 @@ async function elevenSpeech(key, text) {
         body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
       })
       : await net.fetch(`${SERVER}/api/speak`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Max-Install': installId() }, body: JSON.stringify({ text }),
+        method: 'POST', body: JSON.stringify({ text }),
+        headers: { 'Content-Type': 'application/json', 'X-Max-Install': installId(), ...(readKey(PLUS_KEY_FILE()) && { 'X-Max-Plus': readKey(PLUS_KEY_FILE()) }) },
       });
     if (!key && !res.ok) throw new Error(await serverSays(res) || "Max can't talk right now.");
     if (res.ok) {
@@ -183,6 +185,22 @@ ipcMain.handle('transcribe', async (_e, buffer) => {
   const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', { method: 'POST', headers: { 'xi-api-key': key }, body: form });
   if (!res.ok) throw new Error(elevenError(res.status, await res.text().catch(() => '')));
   return String((await res.json()).text || '').trim();
+});
+// Max Plus: the licence is checked by the Max Code server (with Lemon Squeezy) before it's saved.
+ipcMain.handle('hasPlusKey', () => (readKey(PLUS_KEY_FILE()) ? true : lost[PLUS_KEY_FILE()] ? 'lost' : false));
+ipcMain.handle('setPlusKey', async (_e, key) => {
+  key = String(key || '').trim();
+  const res = await net.fetch(`${SERVER}/api/plus`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) }).catch(() => null);
+  if (!res) throw new Error("Can't reach Max. Check your internet connection.");
+  const j = await res.json().catch(() => ({}));
+  if (!j.valid) throw new Error(j.error || "That isn't a valid Max Plus licence key (or its subscription has ended).");
+  await saveKey(key, PLUS_KEY_FILE());
+  return true;
+});
+ipcMain.handle('buyPlus', async () => {
+  const j = await (await net.fetch(`${SERVER}/api/plus`).catch(() => null))?.json().catch(() => null);
+  if (!j?.checkout) throw new Error("Max Plus isn't on sale yet.");
+  shell.openExternal(j.checkout);
 });
 ipcMain.handle('hasVoiceKey', () => (readKey(VOICE_KEY_FILE()) ? true : lost[VOICE_KEY_FILE()] ? 'lost' : false));
 // A key that can't read the account (a restricted one) is still fine if it isn't rejected outright.
@@ -272,7 +290,7 @@ ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 const HIDE = { width: 48, height: 46 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
 const HAND_FOR = 2 * 60 * 1000;
 let win = null, settings = null, tray = null, mode = 'hide';
-let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', talk: 'Control+Alt+Space', wake: true, level: 'beginner' };   // theme: system | light (Paper) | dark (Frost)
+let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', talk: 'Control+Alt+T', wake: true, level: 'beginner' };   // theme: system | light (Paper) | dark (Frost)
 
 let saveTimer = null;
 function savePrefs() {
@@ -357,7 +375,7 @@ setInterval(() => {
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Settings ----------
-ipcMain.handle('prefs', () => ({ wake: prefs.wake, talk: prefs.talk, level: prefs.level, call: prefs.call, theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
+ipcMain.handle('prefs', () => ({ bound, wake: prefs.wake, talk: prefs.talk, level: prefs.level, call: prefs.call, theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
 ipcMain.handle('setPref', (_e, name, on) => {
   if (name === 'onTop') { prefs.onTop = !!on; win.setAlwaysOnTop(prefs.onTop); savePrefs(); }
   if (name === 'login') app.setLoginItemSettings({ openAtLogin: !!on });
@@ -375,11 +393,13 @@ ipcMain.handle('setPref', (_e, name, on) => {
 ipcMain.handle('courses', () => readJSON(COURSES()));
 // The two shortcuts (Settings can change both): Call Max opens his panel (pressed again with it open, he listens);
 // Talk to Max opens it listening. false if one is taken or isn't a valid accelerator.
+const bound = { call: false, talk: false };   // which ones Windows actually gave us (Settings says if one is taken)
 function bindKeys({ call, talk } = prefs) {
   globalShortcut.unregisterAll();
   const bind = (acc, fn) => { if (!acc) return true; try { return globalShortcut.register(acc, fn); } catch { return false; } };
-  return bind(call, () => (mode === 'panel' ? win.webContents.send('listen') : setMode('panel')))
-    && bind(talk, () => { setMode('panel'); win.webContents.send('listen'); });
+  bound.call = bind(call, () => (mode === 'panel' ? win.webContents.send('listen') : setMode('panel')));
+  bound.talk = bind(talk, () => { setMode('panel'); win.webContents.send('listen'); });
+  return bound.call && bound.talk;
 }
 
 // ---------- Debugging what's on screen ----------
@@ -582,7 +602,7 @@ function openSettings() {
 }
 
 async function open() {
-  await Promise.all([loadKey(KEY_FILE()), loadKey(VOICE_KEY_FILE())]);
+  await Promise.all([loadKey(KEY_FILE()), loadKey(VOICE_KEY_FILE()), loadKey(PLUS_KEY_FILE())]);
   prefs = { ...prefs, ...readJSON(PREFS()) };
   nativeTheme.themeSource = prefs.theme;
   win = new BrowserWindow({

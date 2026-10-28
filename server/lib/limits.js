@@ -17,9 +17,21 @@ const MESSAGES = {
   vision: "That's today's free screen reads. They reset at midnight UTC, or add your own free NVIDIA key in Settings → Keys.",
   voice: "Max has talked a lot today, so he'll type until midnight UTC. Add an ElevenLabs key in Settings → Keys to keep him talking.",
   total: 'Max is very busy today. Try again in a while, or add your own free NVIDIA key in Settings → Keys.',
+  plus: "That's a lot of talking today, even for Max Plus. He'll type until midnight UTC.",
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+// Max Plus voice: characters per licence per day. Fair use (~15 minutes), counted per licence so a shared key doesn't
+// multiply it; PLUS_VOICE changes it.
+export const PLUS_VOICE = Number(process.env.PLUS_VOICE || 15000);
+export async function spendPlus(redis, { licence, amount, day = today() }) {
+  const k = `plus:${day}:${licence}`;
+  const [n] = await redis([['INCRBY', k, amount], ['EXPIRE', k, 172800]]);
+  if (Number(n) <= PLUS_VOICE) return null;
+  await redis([['DECRBY', k, amount]]);
+  return MESSAGES.plus;
+}
 
 // redis(commands) -> results, one per command (Upstash's /pipeline).
 export function upstash(url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -75,5 +87,9 @@ if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/').replace(
   assert.equal(await go('u', '5.5.5.5', 'voice', 400), null);                   // so others still get theirs
   store.clear();
   assert.match(await go('t', '4.4.4.4', 'vision', TOTAL.vision + 1), /very busy/); // everyone's total
+  store.clear();
+  assert.equal(await spendPlus(fake, { licence: 'L', amount: PLUS_VOICE, day: 'd' }), null);       // a Plus licence's whole day
+  assert.match(await spendPlus(fake, { licence: 'L', amount: 1, day: 'd' }), /even for Max Plus/);
+  assert.equal(store.get('plus:d:L'), PLUS_VOICE);                                                // the refused one isn't counted
   console.log('limits ok');
 }

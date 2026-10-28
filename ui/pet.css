@@ -48,9 +48,11 @@ body.listening #chibi .me { animation: bob 0.5s ease-in-out infinite alternate; 
 .toolrow:not(:has(> :not([hidden]))) { display: none; }
 
 /* The tutor, squeezed into the panel */
-#panel .home { padding: 20px 16px; }
-#panel .home h1 { font-size: 22px; }
-#panel .home .grid { grid-template-columns: 1fr; }
+#panel .home { padding: 16px; }
+#panel .home h1 { font-size: 20px; margin-bottom: 10px; }
+#panel .home .grid { grid-template-columns: 1fr; gap: 6px; margin-top: 10px; }
+#panel .home .grid .card { padding: 9px 12px; }
+#panel .home #start .small { margin-top: 12px; }   /* the menu fits the panel: no scrolling */
 
 /* Hiding: only the raised hand, peeking up from the bottom of the screen */
 #hand { display: none; position: absolute; inset: 0; cursor: pointer; }
