@@ -61,7 +61,7 @@
         </g>
         <g class="shades">
           <path d="M40 51h18v6a5 5 0 0 1-5 5h-8a5 5 0 0 1-5-5zM62 51h18v6a5 5 0 0 1-5 5h-8a5 5 0 0 1-5-5z" fill="#111"/>
-          <path d="M58 53h4" stroke="#111" stroke-width="2"/><path d="M43 54l4-1.5M65 54l4-1.5" stroke="#fff" stroke-opacity=".6" stroke-width="1.2"/>
+          <path d="M58 53h4M40 53l-4-1.5M80 53l4-1.5" stroke="#111" stroke-width="2" fill="none"/><path d="M43 54l4-1.5M65 54l4-1.5" stroke="#fff" stroke-opacity=".6" stroke-width="1.2"/>
         </g>
         <path class="sweat" d="M84 36q3.5 5 0 8a3.5 3.5 0 0 1-3.5-3.5q0-2 3.5-4.5z" fill="#7cc7ff"/>
         <ellipse cx="44" cy="64" rx="4" ry="2.4" fill="#ff2d95" opacity=".3"/>

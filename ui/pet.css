@@ -109,7 +109,7 @@ body #chibi.cheer .me { animation: jump 0.9s cubic-bezier(0.3, 1.6, 0.5, 1) 2; }
 /* Easter eggs (pet.js) */
 #chibi .dizzy-eyes, #chibi .shut, #chibi .shades, #chibi .sweat, #chibi .orbit { display: none; }
 body.c-leet .k-leet, body.c-friday .k-friday, body.c-birthday .k-birthday { display: inline; }
-#chibi.dizzy .eyes, #chibi.nap .eyes { display: none; }
+#chibi.dizzy .eyes, #chibi.nap .eyes, #chibi.shades .glasses { display: none; }   /* shades go on instead of his glasses */
 #chibi.dizzy .dizzy-eyes, #chibi.dizzy .orbit, #chibi.nap .shut, #chibi.nap .zzz, #chibi.shades .shades, #chibi.oops .sweat { display: inline; }
 body #chibi.dizzy .me { animation: wobble 0.45s ease-in-out infinite alternate; transform-origin: 60px 116px; }
 @keyframes wobble { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
