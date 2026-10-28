@@ -3,13 +3,13 @@
 // ids still hits a wall; and a total per day for everyone keeps the NVIDIA and ElevenLabs bills from running away.
 // Days are UTC. Users with their own keys never come here.
 
-// Per install per day: questions, vision calls (a screen read is two), characters Max says (~5 minutes).
-export const LIMITS = { chat: 60, vision: 20, voice: 4500 };
+// Per install per day: questions, vision calls (a screen read is two), characters Max says (~1 minute).
+export const LIMITS = { chat: 60, vision: 20, voice: 900 };
 const PER_IP = 5;
 const TOTAL = {
   chat: Number(process.env.CAP_CHAT || 3000),
   vision: Number(process.env.CAP_VISION || 400),
-  voice: Number(process.env.CAP_VOICE || 40000),
+  voice: Number(process.env.CAP_VOICE || 1300),   // ~20,000 ElevenLabs credits a month (Flash: half a credit per character)
 };
 
 const MESSAGES = {
@@ -69,7 +69,7 @@ if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/').replace(
   assert.equal(await go('y', '2.2.2.2', 'chat'), null);                         // 241st: still under 5 × 60
   for (let i = 0; i < 60; i++) await go('z', '2.2.2.2', 'chat');
   assert.match(await go('w', '2.2.2.2', 'chat'), /free daily limit/);           // over 300 from that IP, even on a new id
-  assert.equal(await go('v', '3.3.3.3', 'voice', 4500), null);
+  assert.equal(await go('v', '3.3.3.3', 'voice', 900), null);
   assert.match(await go('v', '3.3.3.3', 'voice', 1), /talked a lot/);
   store.clear();
   assert.match(await go('t', '4.4.4.4', 'vision', TOTAL.vision + 1), /very busy/); // everyone's total
