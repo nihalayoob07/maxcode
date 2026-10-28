@@ -1,0 +1,30 @@
+# Builds the Max Code installer on Windows. Push a tag like v0.1.0 and MaxCode-Setup.exe lands on a
+# GitHub Release; run it by hand (Actions tab) to get the installer as a downloadable artifact instead.
+name: Max Code installer
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run dist -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MaxCode-Setup
+          path: dist/MaxCode-Setup.exe
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Max Code ${{ github.ref_name }}
+          files: dist/MaxCode-Setup.exe
