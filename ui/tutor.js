@@ -128,6 +128,7 @@ function task(text, cls = '', label = '') {
 }
 const btn = (label, act, cls = '', disabled = false) => `<button class="btn ${cls}" data-act="${act}"${disabled ? ' disabled' : ''}>${esc(label)}</button>`;
 const current = () => S.notes[S.at];
+const fixable = () => S.notes.filter((n) => !n.fixed && n.find).length;
 
 function noteHTML() {
   if (S.answer) return `<div class="note"><div class="head">MAX</div>${rich(S.answer.say)}<div class="acts">${btn('Back', 'back', 'p')}</div></div>`;
@@ -143,7 +144,8 @@ function noteHTML() {
         + `<div class="acts">${btn('Cancel', 'nofix')}${btn('Apply fix', 'apply', 'p')}</div></div>`;
     }
     const fix = !n.fixed && n.find ? btn(`Fix #${n.n}`, 'fix', last ? 'p' : '') : '';
-    return `<div class="note">${head}${rich(n.say)}<div class="acts">${btn('‹ Previous', 'prev', '', S.at === 0)}${fix}${last ? '' : btn('Next ›', 'next', fix ? '' : 'p')}</div></div>`;
+    const open = fixable(), all = open > 1 ? btn(`Fix all ${open}`, 'fixall') : '';
+    return `<div class="note">${head}${rich(n.say)}<div class="acts">${btn('‹ Previous', 'prev', '', S.at === 0)}${all}${fix}${last ? '' : btn('Next ›', 'next', fix ? '' : 'p')}</div></div>`;
   }
   const text = S.simple && n.simple ? n.simple : n.say;
   const vars = n.vars ? `<div class="vars">${esc(n.vars)}</div>` : '';
@@ -289,7 +291,7 @@ function screenNote() {
   const n = current();
   if (!n) return window.max.hideNotes();
   window.max.screenNote({ line: n.line, n: n.n, total: S.notes.length, kind: n.kind, title: n.title, say: n.say,
-    fix: n.find && !n.fixed ? n.replace : '', fixed: !!n.fixed });
+    fix: n.find && !n.fixed ? n.replace : '', fixed: !!n.fixed, fixable: fixable() });
 }
 function reset(kind) {
   cancelAsk(); stopVoice();
@@ -509,8 +511,9 @@ Check each of these separately, line by line, and report every one that fails:
 1. Every statement is complete: semicolons, brackets, quotes.
 2. Every variable is DECLARED (with its type, in typed languages) before it is used. A variable that is never declared is its own error.
 3. Every variable is GIVEN A VALUE before its value is read. This is a different error from 2.
-4. Types match: format specifiers, function arguments, return values.
-5. Nothing crashes or never ends: out-of-bounds, null, division by zero, infinite loops.`;
+4. Types match: format specifiers, function arguments, return values. Every call passes as many arguments as the function's declaration takes (check across all the files).
+5. Nothing crashes or never ends: out-of-bounds, null, division by zero, infinite loops.
+6. Every buffer is big enough for what is copied into it (strcpy, strcat, sprintf, array sizes), counting the '\\0' at the end of strings.`;
   const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code.replace(/\t/g, '    '))}`).join('\n\n')}`;   // no tabs for Max to copy into his JSON
   const SHAPE = `Reply exactly in this shape:
 {"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
@@ -529,7 +532,7 @@ A fix ("replace") is the smallest change that makes the program correct and do w
   if (!r) { if (S.onScreen) window.max.mode('panel'); return; }   // the error shows in the panel
   // The second answer gets 4 s more at most: NVIDIA sometimes queues one request for a minute.
   r.errors = mergeErrors(r.errors || [], (await Promise.race([second, new Promise((ok) => setTimeout(ok, 4000))]))?.errors || []);
-  r.errors = mergeErrors(r.errors, undeclared(S.files[0], r.lang || S.lang, r.errors));
+  r.errors = mergeErrors(r.errors, S.files.flatMap((f) => undeclared(f, r.lang || S.lang, r.errors)));
   const unsaved = dirty ? ` (${files[0].name} has unsaved changes in ${editor || 'your editor'}: I read the saved version.)` : '';
   S.lang ||= String(r.lang || '');
   const show = (res) => {
@@ -565,7 +568,7 @@ function undeclared(file, lang, errors) {
   // usable fix, it gets this one instead of being left without an Apply fix button.
   const squash = (s) => String(s || '').replace(/\s+/g, '');
   const usable = (e) => e.find && squash(code).includes(squash(unnumber(e.find))) && squash(e.find) !== squash(e.replace);
-  const said = (re, name) => errors.find((e) => re.test(`${e.title}`) && `${e.title} ${e.say} ${e.find}`.includes(name));
+  const said = (re, name) => errors.find((e) => (typeof S === 'undefined' || S.files.length < 2 || e.file === file.name) && re.test(`${e.title}`) && new RegExp(`\\b${name}\\b`).test(`${e.title} ${e.say} ${e.find}`));
   const report = (e, re, name) => { const had = said(re, name); if (!had) return found.push(e); if (!usable(had)) Object.assign(had, { find: e.find, replace: e.replace, line: e.line, text: e.text }); };
   const found = [], lines = code.split('\n');
   lines.forEach((l, i) => {
@@ -575,25 +578,35 @@ function undeclared(file, lang, errors) {
       say: `\`${m[2]}\` is used here but never declared, so the compiler doesn't know what it is. Declare it with its type first.`,
       find: l, replace: `${m[1]}int ${l.trim().replace(/;?\s*$/, ';')}` }, /declar/i, m[2]);
   });
-  // Number variables declared without a value ("int a, b;") whose value is read before anything is put in them: the
-  // fix keeps the declaration and gives each one a value on its own line. ponytail: values are placeholders (2, 3, ...)
-  // and only straight-line code is followed; a value set inside an if or loop above the read still counts as set.
+  // Number variables declared without a value ("int a, b;") inside a function whose value is read before anything is
+  // put in them: the fix keeps the declaration and gives each one a value on its own line. ponytail: only straight-line
+  // code is followed (a value set inside an if or loop above the read counts as set), and the values are placeholders:
+  // 0 for totals, counts and best/max/min, else 2, 3, ...
+  let depth = 0, inStruct = false;
   lines.forEach((l, i) => {
+    const before = depth;
+    if (/\b(struct|union|enum)\b/.test(l) && l.includes('{')) inStruct = true;
+    depth += (l.match(/\{/g) || []).length - (l.match(/\}/g) || []).length;
+    if (depth <= 0) inStruct = false;
     const d = /^(\s*)(?:int|float|double|long)\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*;?\s*$/.exec(l);
-    if (!d) return;
+    if (!d || before < 1 || inStruct) return;   // in a function body, not a struct's fields
     const empty = d[2].split(',').map((s) => s.trim()).filter((name) => {
+      const use = new RegExp(`(?<![\\w.>])${name}\\b(\\s*=(?!=))?`);   // not s.name or s->name (a field)
       for (const later of lines.slice(i + 1)) {
-        if (new RegExp(`^\\s*${name}\\s*=[^=]`).test(later) && !new RegExp(`=.*\\b${name}\\b`).test(later.replace(/^[^=]*=/, '='))) return false;   // given a value first
+        if (new RegExp(`\\b(?:int|float|double|long|char)\\b[^;=]*\\b${name}\\b`).test(later)) return false;   // declared again
         if (new RegExp(`&\\s*${name}\\b`).test(later)) return false;   // read in with scanf
-        if (new RegExp(`\\b${name}\\b`).test(later)) return true;   // read while still empty
+        const m = use.exec(later);
+        if (m) return !m[1] || new RegExp(`\\b${name}\\b`).test(later.slice(m.index + m[0].length).split(';')[0]);   // first use reads it, or "x = x + 1"
       }
       return false;
     });
     if (!empty.length) return;
+    let next = 2;
+    const value = (n) => (/^(best|max|min|sum|total|count|n|res|result|acc)/i.test(n) ? 0 : next++);
     const names2 = empty.map((n) => `\`${n}\``).join(' and ');
     report({ file: file.name, line: i + 1, text: l, kind: 'runtime', title: 'variable has no value',
       say: `${names2} ${empty.length > 1 ? 'are' : 'is'} declared but never given a value, so the program works with whatever garbage is in memory. Give ${empty.length > 1 ? 'them values' : 'it a value'} before using ${empty.length > 1 ? 'them' : 'it'}.`,
-      find: l, replace: [`${d[1]}${l.trim().replace(/;?\s*$/, ';')}`, ...empty.map((n, j) => `${d[1]}${n} = ${j + 2};`)].join('\n') }, /value|initiali|garbage|uninit/i, empty[0]);
+      find: l, replace: [`${d[1]}${l.trim().replace(/;?\s*$/, ';')}`, ...empty.map((n) => `${d[1]}${n} = ${value(n)};`)].join('\n') }, /value|initiali|garbage|uninit|before|set/i, empty[0]);
   });
   return found;
 }
@@ -648,24 +661,56 @@ async function applyFix() {
     if (S.onScreen) await window.max.typeFix({ line: n.line, find: n.find, replace: n.replace });
     if (f.path) f.code = await window.max.tutorSave({ file: f.path, find: n.find, replace: n.replace });
     else f.code = f.code.replace(n.find, () => n.replace);
-  } catch (e) {
-    S.showFix = false; setWaiting(null); render();
-    const why = String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, '');
-    if (S.onScreen) window.max.screenNote({ ...current(), line: current().line, total: S.notes.length, fix: current().replace, error: why });
-    return say(why);
-  }
-  n.fixed = true; S.showFix = false;
-  // Other problems on the same line were fixed with it (each fix is the whole line with all its problems fixed).
-  const squash = (s) => String(s).replace(/\s+/g, '');
-  for (const o of S.notes) if (o !== n && !o.fixed && o.find && squash(o.find) === squash(n.find)) o.fixed = true;
-  setWaiting(null);
-  // The other errors' lines may have moved: find them again by their text.
-  for (const o of S.notes) if (o !== n && o.fi === n.fi) o.line = locate(f.code, o.line + (o.line > n.line ? n.replace.split('\n').length - n.find.split('\n').length : 0), o.text);
-  n.line = locate(f.code, n.line, n.replace.split('\n')[0]);
+  } catch (e) { return fixFailed(e); }
+  S.showFix = false; setWaiting(null);
+  fixedNote(n, f);
   render();
   if (S.onScreen) screenNote();
   const left = S.notes.filter((x) => !x.fixed).length;
   say(`Done${f.path ? `, saved to ${f.name}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} to go.` : ' That was the last one.'}`);
+}
+function fixFailed(e) {
+  S.showFix = false; setWaiting(null); render();
+  const why = String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, '');
+  if (S.onScreen) window.max.screenNote({ ...current(), line: current().line, total: S.notes.length, fix: current().replace, error: why });
+  return say(why);
+}
+// A fix landed in f.code: it's fixed, and so are other problems on its line (each fix is the whole line with all its
+// problems fixed). The other errors' lines may have moved: they're found again by their text.
+function fixedNote(n, f) {
+  n.fixed = true;
+  const squash = (s) => String(s).replace(/\s+/g, '');
+  for (const o of S.notes) if (o !== n && !o.fixed && o.find && squash(o.find) === squash(n.find)) o.fixed = true;
+  for (const o of S.notes) if (o !== n && o.fi === n.fi) o.line = locate(f.code, o.line + (o.line > n.line ? n.replace.split('\n').length - n.find.split('\n').length : 0), o.text);
+  n.line = locate(f.code, n.line, n.replace.split('\n')[0]);
+}
+// Fix all: every problem that has a fix, in one go. On screen it's one copy and one paste (one Ctrl+Z undoes it all).
+async function fixAll() {
+  let todo = S.notes.filter((n) => !n.fixed && n.find);
+  if (!todo.length) return say("There's nothing left I can fix by myself.");
+  S.showFix = false; setWaiting(null);
+  if (S.onScreen) {
+    try {
+      const landed = await window.max.typeFix({ fixes: todo.map((n) => ({ line: n.line, find: n.find, replace: n.replace })) });
+      todo = todo.filter((_, i) => landed[i]);
+    } catch (e) { return fixFailed(e); }
+  }
+  const saved = new Set();
+  for (const n of todo) {
+    if (n.fixed) continue;   // fixed along with another problem on its line
+    const f = S.files[n.fi];
+    try {
+      if (f.path) { f.code = await window.max.tutorSave({ file: f.path, find: n.find, replace: n.replace }); saved.add(f.name); }
+      else f.code = f.code.replace(n.find, () => n.replace);
+      fixedNote(n, f);
+    } catch {}   // that file changed under it: the problem stays open, the rest still get fixed
+  }
+  S.at = Math.max(0, S.notes.findIndex((x) => !x.fixed));
+  S.fi = current()?.fi ?? S.fi;
+  render();
+  if (S.onScreen) screenNote();
+  const left = S.notes.filter((x) => !x.fixed).length;
+  say(`Fixed ${S.notes.length - left} of ${S.notes.length}${saved.size ? `, saved to ${[...saved].join(', ')}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} left to fix by hand.` : ''}`);
 }
 
 /* ---------- Questions ---------- */
@@ -739,6 +784,7 @@ function act(a) {
   if (a === 'nope' || a === 'done') { setWaiting(null); stopVoice(); return say('Okay. Ask me anything else about it.'); }
   if (a === 'fix') return showFix(current()?.n);
   if (a === 'apply') return applyFix();
+  if (a === 'fixall') return fixAll();
   if (a === 'nofix') { S.showFix = false; setWaiting(null); render(); return say('Okay, I left it.'); }
   if (a === 'check') return check();
   if (a === 'hint') return hint();
@@ -788,6 +834,7 @@ window.max.onTutor((job) => {
   if (c === 'skip' || (c === 'no' && S.ci !== null)) return S.ci !== null ? finishLesson() : act('nope');
   if (c === 'next' || c === 'prev') return act(c);
   if (c === 'applyHere') { S.showFix = true; return applyFix(); }   // the callout's Apply fix
+  if (c === 'fixAll') return fixAll();
   if (c === 'simple') { S.simple = true; render(); return sayCurrent(); }
   if (c === 'trace') return trace();
   if (c === 'fix') return showFix(job.n);

@@ -20,7 +20,15 @@
     $('#apply').hidden = !n.fix;
     $('#apply').disabled = false;
     $('#apply').textContent = 'Apply fix';
+    $('#all').hidden = !(n.fixable > 1);
+    $('#all').disabled = false;
+    $('#all').textContent = `Fix all ${n.fixable}`;
   });
+  $('#all').onclick = () => {
+    $('#all').disabled = $('#apply').disabled = true;
+    $('#all').textContent = 'Fixing…';
+    window.max.calloutAct('fixAll');
+  };
   $('#prev').onclick = () => window.max.calloutAct('prev');
   $('#next').onclick = () => window.max.calloutAct('next');
   $('#close').onclick = () => window.max.calloutAct('close');

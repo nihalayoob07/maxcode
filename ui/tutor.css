@@ -104,7 +104,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 
 /* Code */
-.code { flex: 1; min-height: 0; overflow: auto; font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; padding: 10px 0 24px; font: 13.5px/var(--row) var(--mono); color: var(--code); }
+.code { flex: 1; min-height: 0; overflow: auto; padding: 10px 0 24px; font: 13.5px/var(--row) var(--mono); color: var(--code); }
+/* Code as typed: no -> turning into an arrow or <= into ≤ (after the font shorthands, which reset it). */
+.code, .code *, .diff, .fix pre, .note code, .edit pre, .edit textarea { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
 .ln { display: flex; min-height: var(--row); }
 .ln .g { flex: none; width: 76px; padding-right: 14px; text-align: right; color: var(--gutter); user-select: none; white-space: nowrap; }
 .ln .tx { white-space: pre-wrap; word-break: break-all; padding-right: 16px; flex: 1; }

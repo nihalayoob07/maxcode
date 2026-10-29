@@ -75,6 +75,7 @@ function command(text, waiting) {
   if (/^skip(?: it| this| this one| the example| the exercise| the practice)?$/.test(t)) return { cmd: 'skip' };
   if (/^(?:next|go on|continue|carry on|next (?:line|step|one|error|bug))$/.test(t)) return { cmd: 'next' };
   if (/^(?:previous|go back|back|previous (?:line|step|one|error|bug)|last (?:line|step|one))$/.test(t)) return { cmd: 'prev' };
+  if (/\bfix (?:them |it |those |these )?all\b|\bfix (?:all|every) (?:of )?(?:the |them|it)?|\bfix everything\b/.test(t)) return { cmd: 'fixAll' };
   if ((m = /\bfix (?:the )?(?:error |bug |mistake |problem |issue )?(?:number |no |#)?(\d+|[a-z]+)\b/.exec(t)) && (Number(m[1]) || NUM[m[1]])) return { cmd: 'fix', n: Number(m[1]) || NUM[m[1]] };
   if (waiting && /^(?:yes|yeah|yep|yup|sure|ok|okay|do it|go ahead|proceed|apply(?: it| the fix)?|save(?: it)?|let'?s go|let'?s do it|yes (?:please|do it|go ahead|proceed|apply it|save it))$/.test(t)) return { cmd: 'yes' };
   if (waiting && /^(?:no|nope|nah|cancel|don'?t|stop|no thanks|not now|leave it|skip)$/.test(t)) return { cmd: 'no' };

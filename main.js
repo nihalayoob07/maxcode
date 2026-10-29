@@ -632,7 +632,11 @@ if ($env:MAXCODE_EXPECT_WINDOW) {
 if ($env:MAXCODE_STEP -eq 'copy') { Ctrl 0x41; Ctrl 0x43; Start-Sleep -Milliseconds 200 }
 if ($env:MAXCODE_STEP -eq 'paste') { Ctrl 0x41; Ctrl 0x56; Start-Sleep -Milliseconds 250 }
 $null = [MaxCode.Input]::SetCursorPos([int]$at[2], [int]$at[3])`;
-ipcMain.handle('typeFix', async (_e, { line, find, replace }) => {
+// Fix all sends `fixes` (each { line, find, replace }): one copy, every fix made in the text, one paste. Resolves to which
+// of them landed (true/false each).
+ipcMain.handle('typeFix', async (_e, { line, find, replace, fixes }) => {
+  const list = fixes || [{ line, find, replace }];
+  ({ line, find } = list[0]);
   // Find the line again, as it is now: the first line of what the fix replaces, nearest where it was (if known).
   const { display, img } = await capture();
   const seen = await ocr(img), k = display.size.width / img.getSize().width;
@@ -657,17 +661,18 @@ ipcMain.handle('typeFix', async (_e, { line, find, replace }) => {
   clipboard.writeText('');   // so a copy that didn't happen can't be mistaken for the document
   try {
     await powershell(KEYS, { ...where, MAXCODE_STEP: 'copy' });
-    const fixed = tutorCode.fixInText(clipboard.readText(), find, replace, line);
-    if (!fixed) {
+    let doc = clipboard.readText();
+    const landed = list.map((f) => { const t = tutorCode.fixInText(doc, f.find, f.replace, f.line); if (t) doc = t; return !!t; });
+    if (!landed.some(Boolean)) {
       await powershell(KEYS, { ...where, MAXCODE_STEP: 'click' });   // just the click: drops the select-all, changes nothing
       throw new Error("I couldn't find that code in your editor, so I didn't change anything.");
     }
-    clipboard.writeText(fixed);
+    clipboard.writeText(doc);
     await powershell(KEYS, { ...where, MAXCODE_STEP: 'paste' });
+    return landed;
   } finally {
     setTimeout(() => clipboard.writeText(old), 1500);   // your clipboard, as it was
   }
-  return true;
 });
 
 ipcMain.handle('screenCode', async () => {
@@ -751,6 +756,8 @@ app.on('web-contents-created', (_e, wc) => wc.setWindowOpenHandler(({ url }) => 
   return { action: 'deny' };
 }));
 
+// Test runs get their own settings folder and run beside the installed Max instead of closing it.
+if (process.env.MAXCODE_TEST_SCREEN) app.setPath('userData', `${app.getPath('userData')}-test`);
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (win) setMode('panel'); });
