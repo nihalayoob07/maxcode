@@ -712,9 +712,11 @@ async function typeFix(list, code) {
 
 ipcMain.handle('screenCode', async () => {
   const { display, img } = await capture();
-  const read = await look(() => 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code on screen, reply {"code":""}.',
+  const read = await look(() => 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. Only the code itself, in the text area: never window titles, tab names, file names or menus (a tab called "#include<stdio.h>" is not code). If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code on screen, reply {"code":""}.',
     img, 1600, 4000);   // a failure here (a daily limit, no internet) is the answer: say it, don't pretend there's no code
-  const box = read?.out?.code ? await findOnScreen(img, String(read.out.code), display).catch(() => null) : null;
+  // A one-line read is most likely a title (Notepad names the tab after the first line): no box, you drag one.
+  const lines = String(read?.out?.code || '').split('\n').filter((l) => l.trim()).length;
+  const box = lines > 1 ? await findOnScreen(img, String(read.out.code), display).catch(() => null) : null;
   const found = { out: { lang: read?.out?.lang } };
   if (process.env.MAXCODE_TEST_SCREEN || process.env.MAXCODE_DEBUG) console.log('[screen] first read:', JSON.stringify(read?.out), '| located:', box);
   if (box) win.webContents.send('say', 'Is this the code?');
