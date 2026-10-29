@@ -429,15 +429,17 @@ $b = New-Object System.Drawing.Bitmap ([int]$r[2]), ([int]$r[3]), ([System.Drawi
 $g = [System.Drawing.Graphics]::FromImage($b)
 $g.CopyFromScreen([int]$r[0], [int]$r[1], 0, 0, $b.Size)
 $b.Save($env:MAXCODE_SHOT, [System.Drawing.Imaging.ImageFormat]::Png)`;
-async function capture() {
+// The display under the mouse, or `display`; Max's windows hidden for it unless hide is false (the note following your
+// code: those windows are left out of what it reads instead, so nothing flickers).
+async function capture({ hide = true, display } = {}) {
   // Tests: MAXCODE_TEST_SCREEN=image.png stands in for the screen (no real screen is captured).
   if (process.env.MAXCODE_TEST_SCREEN) return { display: screen.getPrimaryDisplay(), img: nativeImage.createFromPath(process.env.MAXCODE_TEST_SCREEN) };
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  display ||= screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const px = screen.dipToScreenRect(null, display.bounds);
-  const file = path.join(app.getPath('temp'), `maxcode-shot-${process.pid}.png`);
-  const others = [win, settings, callout].filter((w) => w && !w.isDestroyed());
+  const file = path.join(app.getPath('temp'), `maxcode-shot-${process.pid}${hide ? '' : '-t'}.png`);
+  const others = hide ? [win, settings, callout].filter((w) => w && !w.isDestroyed()) : [];
   others.forEach((w) => w.setOpacity(0));
-  await new Promise((r) => setTimeout(r, 180));
+  if (hide) await new Promise((r) => setTimeout(r, 180));
   try {
     await powershell(SHOT, { MAXCODE_RECT: [px.x, px.y, px.width, px.height].join(','), MAXCODE_SHOT: file });
     const img = nativeImage.createFromPath(file);
@@ -579,23 +581,35 @@ async function findOnScreen(img, code, display) {
 
 // ---------- Explaining and fixing the code where it is on screen ----------
 // After a screen read, each line of the code has a place on screen (screenMap). Max's notes show in a small callout
-// next to the line, with an arrow at it (ui/callout.*); "Apply fix" finds the line on screen again (you may have
-// scrolled), clicks it, selects it and pastes the fix, so it works in any editor. Ctrl+Z in the editor undoes it.
-let screenMap = null, callout = null;
+// next to the line, with an arrow at it (ui/callout.*). While it's up, the screen is read again every 1.5 s so the note
+// follows the code (scrolled, window moved, lines added by a fix) and hides while the code is out of sight. "Apply fix"
+// clicks into the code, wherever it is now, and makes the fix in the editor's copied text, so it works in any editor.
+// Ctrl+Z in the editor undoes it.
+let screenMap = null, callout = null, note = null, codeNow = '', typing = false, tracking = false;
 // Line i (0-based) of the screen code: its middle and the code block's left and right, in screen points.
 function lineOnScreen(i) {
   const { m, k, display } = screenMap;
   return { y: display.bounds.y + (m.lineY(i) + m.lineH / 2) * k, x0: display.bounds.x + m.x0 * k, x1: display.bounds.x + m.x1 * k, display };
 }
 const CALLOUT = { width: 380, height: 230, arrowY: 34 };
-ipcMain.on('screenNote', (_e, note) => {
-  if (!screenMap) return;
+ipcMain.on('screenNote', (_e, n) => {
+  note = n;
+  if (n.code) codeNow = n.code;   // the code as it is now (after fixes), to find it on screen again
+  placeNote();
+});
+function placeNote() {
+  if (!screenMap || !note) return;
   const at = lineOnScreen(note.line - 1), area = at.display.workArea;
   const right = at.x1 + 12 + CALLOUT.width <= area.x + area.width;   // beside the code on the right, else on its left
   const x = right ? at.x1 + 12 : Math.max(area.x, at.x0 - 12 - CALLOUT.width);
   const y = Math.max(area.y, Math.min(at.y - CALLOUT.arrowY, area.y + area.height - CALLOUT.height));
   const send = () => callout.webContents.send('note', { ...note, side: right ? 'left' : 'right', arrowY: at.y - y });
-  if (callout && !callout.isDestroyed()) { callout.setBounds({ x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height }); return send(); }
+  if (callout && !callout.isDestroyed()) {
+    const b = callout.getBounds();
+    if (Math.abs(b.x - x) > 2 || Math.abs(b.y - y) > 2) callout.setBounds({ x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height });
+    if (!callout.isVisible()) callout.showInactive();
+    return send();
+  }
   callout = new BrowserWindow({
     x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height, frame: false, transparent: true, resizable: false,
     skipTaskbar: true, hasShadow: false, alwaysOnTop: true, focusable: true,
@@ -604,7 +618,26 @@ ipcMain.on('screenNote', (_e, note) => {
   callout.setAlwaysOnTop(true, 'screen-saver');
   callout.loadFile(path.join(__dirname, 'ui', 'callout.html'));
   callout.webContents.once('did-finish-load', send);
-});
+}
+// The code found on screen again: OCR lines on Max's own windows (the panel may show the same code) don't count.
+function findCode(seen, display, k, code) {
+  const ours = [win, settings, callout].filter((w) => w && !w.isDestroyed() && w.isVisible() && w.getOpacity() > 0).map((w) => w.getBounds());
+  const mine = (o) => ours.some((b) => { const x = display.bounds.x + ((o.x0 + o.x1) / 2) * k, y = display.bounds.y + ((o.y0 + o.y1) / 2) * k; return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height; });
+  return matchLines(seen.filter((o) => !mine(o)), code);
+}
+async function track() {
+  if (tracking || typing || !callout || callout.isDestroyed() || !screenMap || !codeNow) return;
+  tracking = true;
+  try {
+    const { display, img } = await capture({ hide: false, display: screenMap.display });
+    const k = display.size.width / img.getSize().width, m = findCode(await ocr(img), display, k, codeNow);
+    if (typing || !callout || callout.isDestroyed()) return;
+    if (!m) { callout.hide(); return; }   // scrolled away, another tab, minimised: back when the code is
+    screenMap = { m, k, display };
+    placeNote();
+  } catch {} finally { tracking = false; }
+}
+setInterval(track, 1500);
 ipcMain.on('hideNotes', () => { if (callout && !callout.isDestroyed()) callout.close(); callout = null; });
 // The callout's buttons go to the tutor page as commands (tutor.js onTutor).
 ipcMain.on('calloutAct', (_e, cmd) => {
@@ -634,27 +667,19 @@ if ($env:MAXCODE_STEP -eq 'paste') { Ctrl 0x41; Ctrl 0x56; Start-Sleep -Millisec
 $null = [MaxCode.Input]::SetCursorPos([int]$at[2], [int]$at[3])`;
 // Fix all sends `fixes` (each { line, find, replace }): one copy, every fix made in the text, one paste. Resolves to which
 // of them landed (true/false each).
-ipcMain.handle('typeFix', async (_e, { line, find, replace, fixes }) => {
+ipcMain.handle('typeFix', async (_e, { line, find, replace, fixes, code }) => {
   const list = fixes || [{ line, find, replace }];
-  ({ line, find } = list[0]);
-  // Find the line again, as it is now: the first line of what the fix replaces, nearest where it was (if known).
+  typing = true;
+  try { return await typeFix(list, code || codeNow || list[0].find); } finally { typing = false; setTimeout(track, 400); }
+});
+async function typeFix(list, code) {
+  // Where to click: anywhere in the code puts the caret in that editor, and the fix itself is made in the copied text,
+  // so the exact line doesn't matter (lines move as fixes add some, you scroll, the window moves).
   const { display, img } = await capture();
-  const seen = await ocr(img), k = display.size.width / img.getSize().width;
-  const want = find.split('\n')[0].trim(), was = screenMap ? lineOnScreen(line - 1).y : null;
-  let best = null, score = 0.5;
-  for (const o of seen) {
-    const sc = alike(want, String(o.t)) - (was === null ? 0 : Math.abs(display.bounds.y + ((o.y0 + o.y1) / 2) * k - was) / 2000);
-    if (sc > score) { score = sc; best = o; }
-  }
-  // OCR often reads a line with red squiggles under it in pieces. Then the line goes where the screen read mapped it,
-  // as long as a piece of it is still there (if the code scrolled away, nothing is touched).
-  let x, y;
-  if (best) { x = best.x0 + 2; y = (best.y0 + best.y1) / 2; } else if (screenMap) {
-    const { m } = screenMap, my = m.lineY(line - 1) + m.lineH / 2;
-    const piece = seen.some((o) => Math.abs((o.y0 + o.y1) / 2 - my) < m.lineH && alike(want, String(o.t)) >= 0.2);
-    if (!piece || screenMap.display.id !== display.id) throw new Error("I can't find that line on screen any more (scrolled away?). Run Debug my code again.");
-    x = m.x0 + 2; y = my;
-  } else throw new Error("I can't find that line on screen any more (scrolled away?). Run Debug my code again.");
+  const k = display.size.width / img.getSize().width, m = findCode(await ocr(img), display, k, code);
+  if (!m) throw new Error("I can't see your code on screen right now. Bring it back into view, then press Apply fix again.");
+  screenMap = { m, k, display };
+  const x = m.top.x0 + 2, y = (m.top.y0 + m.top.y1) / 2;
   const point = (px, py) => screen.dipToScreenPoint({ x: Math.round(display.bounds.x + px * k), y: Math.round(display.bounds.y + py * k) });
   const at = point(x, y), back = screen.dipToScreenPoint(screen.getCursorScreenPoint());
   const where = { MAXCODE_AT: [at.x, at.y, back.x, back.y].join(',') }, old = clipboard.readText();
@@ -673,7 +698,7 @@ ipcMain.handle('typeFix', async (_e, { line, find, replace, fixes }) => {
   } finally {
     setTimeout(() => clipboard.writeText(old), 1500);   // your clipboard, as it was
   }
-});
+}
 
 ipcMain.handle('screenCode', async () => {
   const { display, img } = await capture();
@@ -701,6 +726,7 @@ ipcMain.handle('screenCode', async () => {
   // Where each line is: from OCR when it matched; otherwise spaced evenly down the box you confirmed (it holds the code),
   // so the notes and fixes always go on your real code, never only into Max's panel.
   const m = screenSeen && matchLines(screenSeen.seen, code);
+  codeNow = code;
   if (m) screenMap = { m, k: screenSeen.k, display: screenSeen.display };
   else {
     const step = (y1 - y0) / Math.max(1, code.replace(/\n+$/, '').split('\n').length);

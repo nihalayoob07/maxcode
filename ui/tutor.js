@@ -291,7 +291,7 @@ function screenNote() {
   const n = current();
   if (!n) return window.max.hideNotes();
   window.max.screenNote({ line: n.line, n: n.n, total: S.notes.length, kind: n.kind, title: n.title, say: n.say,
-    fix: n.find && !n.fixed ? n.replace : '', fixed: !!n.fixed, fixable: fixable() });
+    fix: n.find && !n.fixed ? n.replace : '', fixed: !!n.fixed, fixable: fixable(), code: S.files[n.fi]?.code });
 }
 function reset(kind) {
   cancelAsk(); stopVoice();
@@ -666,7 +666,7 @@ async function applyFix() {
   if (!n || !S.showFix) return;
   const f = S.files[n.fi];
   try {
-    if (S.onScreen) await window.max.typeFix({ line: n.line, find: n.find, replace: n.replace });
+    if (S.onScreen) await window.max.typeFix({ line: n.line, find: n.find, replace: n.replace, code: f.code });
     if (f.path) f.code = await window.max.tutorSave({ file: f.path, find: n.find, replace: n.replace });
     else f.code = f.code.replace(n.find, () => n.replace);
   } catch (e) { return fixFailed(e); }
@@ -726,7 +726,7 @@ Reply exactly in this shape:
       for (const e of undeclared({ name: f.name, code: fixed }, S.lang, []).sort((a, b) => b.line - a.line)) ls.splice(e.line - 1, 1, ...e.replace.split('\n'));
       fixed = ls.join('\n');
       const replace = fixed + (f.code.endsWith('\n') ? '\n' : '');
-      if (S.onScreen) await window.max.typeFix({ line: 1, find: f.code.replace(/\n+$/, ''), replace: fixed });
+      if (S.onScreen) await window.max.typeFix({ line: 1, find: f.code.replace(/\n+$/, ''), replace: fixed, code: f.code });
       if (f.path) { f.code = await window.max.tutorSave({ file: f.path, find: f.code, replace }); saved.push(f.name); }
       else f.code = replace;
       for (const n of open) if (S.files[n.fi] === f) { n.fixed = true; n.line = locate(f.code, n.line, n.find ? n.replace.split('\n')[0] : n.text); }
