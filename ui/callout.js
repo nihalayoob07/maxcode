@@ -7,13 +7,14 @@
     $('#call').className = `call ${n.side}`;
     $('#call').style.setProperty('--arrow', `${Math.round(n.arrowY - 2)}px`);
     $('#title').className = n.fixed ? 'ok' : '';
-    $('#title').textContent = `#${n.n} · ${n.kind || 'error'}${n.title ? ` · ${n.title}` : ''}${n.fixed ? ' · fixed' : ''}`;
+    $('#title').textContent = !n.total ? 'All clear' : `#${n.n} · ${n.kind || 'error'}${n.title ? ` · ${n.title}` : ''}${n.fixed ? ' · fixed' : ''}`;
     $('#say').textContent = n.say;
     $('#fixBox').hidden = !n.fix;
     $('#fix').textContent = n.fix || '';
     $('#err').hidden = !n.error;
     $('#err').textContent = n.error || '';
-    $('#count').textContent = `${n.n} / ${n.total}`;
+    $('#count').textContent = n.total ? `${n.n} / ${n.total}` : '';
+    $('#prev').hidden = $('#next').hidden = !n.total;
     $('#prev').disabled = n.n <= 1;
     $('#next').disabled = n.n >= n.total;
     $('#apply').hidden = !n.fix;

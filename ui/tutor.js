@@ -502,17 +502,32 @@ async function debug(files, { editor, dirty, onScreen } = {}) {
   const RULES = `Report only problems that really happen when this exact code runs, or that stop it compiling: syntax errors, variables used without being declared or given a value, wrong types or format specifiers, crashes, out-of-bounds, infinite loops, wrong results. Check every line. Trace it in your head; don't run anything.
 - A correct program has no errors: then errors is []. Most short programs are correct. Never invent a problem to have something to say.
 - No style, naming, formatting or "could be better" remarks, and no warnings about input the program never gets.
-- A logic error only counts if the code clearly doesn't do what its own names, comments or printed text say it is for.`;
+- A logic error only counts if the code clearly doesn't do what its own names, comments or printed text say it is for.
+Check each of these separately, line by line, and report every one that fails:
+1. Every statement is complete: semicolons, brackets, quotes.
+2. Every variable is DECLARED (with its type, in typed languages) before it is used. A variable that is never declared is its own error.
+3. Every variable is GIVEN A VALUE before its value is read. This is a different error from 2.
+4. Types match: format specifiers, function arguments, return values.
+5. Nothing crashes or never ends: out-of-bounds, null, division by zero, infinite loops.`;
   const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code.replace(/\t/g, '    '))}`).join('\n\n')}`;   // no tabs for Max to copy into his JSON
   const SHAPE = `Reply exactly in this shape:
 {"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
 kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].
-A fix ("replace") is the smallest change that makes the program correct and do what it is clearly meant to do, written as the complete corrected line or lines with the same indentation. Never delete, blank out or comment out working logic, and never add comments. If the fix needs a new line next to this one (declaring a variable, reading input), put it in "replace" together with this line.`;
+A fix ("replace") is the smallest change that makes the program correct and do what it is clearly meant to do, written as the complete corrected line or lines with the same indentation. Never delete, blank out or comment out working logic, and never add comments. If the fix needs a new line next to this one (declaring a variable, reading input), put it in "replace" together with this line. If one line has several problems, every fix for that line is the complete line with ALL of its problems fixed.`;
   // One pass, on NVIDIA's big model without reasoning (~3 s): accurate first time, so nothing changes after you start
   // fixing. (A quick small-model pass plus a slow careful one used to replace the list while you were working on it.)
-  const r = await askMax(`Debug this code. ${RULES}\n${code}\n${SHAPE}`,
-    `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`, 'big');
-  if (!r) return;
+  // On screen: Max sits on the taskbar thinking while he checks, and the results show beside your code there.
+  if (S.onScreen) window.max.mode('pet');
+  // Asked twice at once and the two lists combined: one answer alone sometimes misses a bug (an undeclared variable,
+  // say) that the other catches. Both take ~3 s, so it's no slower.
+  const prompt = `Debug this code. ${RULES}\n${code}\n${SHAPE}`;
+  const second = window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }], 'big')
+    .then(parseJSON).catch(() => null);
+  const r = await askMax(prompt, `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`, 'big');
+  if (!r) { if (S.onScreen) window.max.mode('panel'); return; }   // the error shows in the panel
+  // The second answer gets 4 s more at most: NVIDIA sometimes queues one request for a minute.
+  r.errors = mergeErrors(r.errors || [], (await Promise.race([second, new Promise((ok) => setTimeout(ok, 4000))]))?.errors || []);
+  r.errors = mergeErrors(r.errors, undeclared(S.files[0], r.lang || S.lang, r.errors));
   const unsaved = dirty ? ` (${files[0].name} has unsaved changes in ${editor || 'your editor'}: I read the saved version.)` : '';
   S.lang ||= String(r.lang || '');
   const show = (res) => {
@@ -522,10 +537,49 @@ A fix ("replace") is the smallest change that makes the program correct and do w
     const summary = (S.notes.length ? `${S.notes.length} problem${S.notes.length > 1 ? 's' : ''}: ${res.summary || ''}`.trim() : 'No problems found. ' + (res.summary || '')).trim() + unsaved;
     task(summary, S.notes.length ? 'bad' : '', S.notes.length ? 'DEBUG' : 'ALL CLEAR');
     render();
-    if (S.onScreen && S.notes.length) { window.max.mode('pet'); screenNote(); }
+    if (S.onScreen) {
+      window.max.mode('pet');
+      if (S.notes.length) screenNote();
+      else window.max.screenNote({ line: 1, n: 0, total: 0, kind: 'all clear', title: '', say: 'No problems found. Your code looks right.', fix: '', fixed: true });
+    }
   };
   show(r);
   say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}` : "I couldn't find any problems in it.");
+}
+// The classic beginner bug the models sometimes skip, found in code for C, C++, Java and C#: a variable assigned at the
+// start of a line that is never declared anywhere. Unless Max already reported it, it becomes an error whose fix
+// declares it (as an int: the usual case) and completes the line.
+function undeclared(file, lang, errors) {
+  if (!/^(c|c\+\+|cpp|java|c#|csharp)$/i.test(String(lang).trim())) return [];
+  const code = file.code, names = new Set();
+  const TYPES = 'int|float|double|char|long|short|bool|boolean|unsigned|signed|auto|var|String|string|size_t|byte|FILE';
+  for (const m of code.matchAll(new RegExp(`\\b(?:${TYPES})\\b[ \\t*&]+([^;{}\\n]*)`, 'g'))) {   // one line: a missing ; mustn't reach the next
+    for (const part of m[1].split(/[,()]/)) {   // "a, b", "a = 2, b", or parameters "x, double y"
+      const n = new RegExp(`^[\\s*&]*(?:(?:${TYPES})\\b[\\s*&]+)?([A-Za-z_]\\w*)`).exec(part);
+      if (n) names.add(n[1]);
+    }
+  }
+  const found = [], said = (name) => errors.some((e) => /declar/i.test(e.title) && `${e.title} ${e.say} ${e.find}`.includes(name));   // by its title: a "no value" note may say "declared" too
+  code.split('\n').forEach((l, i) => {
+    const m = /^(\s*)([A-Za-z_]\w*)\s*=[^=]/.exec(l);
+    if (!m || names.has(m[2]) || said(m[2]) || found.some((f) => f.name === m[2])) return;
+    found.push({ name: m[2], file: file.name, line: i + 1, text: l, kind: 'syntax', title: 'variable not declared',
+      say: `\`${m[2]}\` is used here but never declared, so the compiler doesn't know what it is. Declare it with its type first.`,
+      find: l, replace: `${m[1]}int ${l.trim().replace(/;?\s*$/, ';')}` });
+  });
+  return found;
+}
+// Two answers' errors as one list: the second one's that aren't already there. Same problem = same line (±1) and a
+// similar title ("variable not declared" / "undeclared variable") or the same fix.
+function mergeErrors(a, b) {
+  const pairs = (s) => { s = String(s).toLowerCase().replace(/[^a-z]/g, ''); const set = new Set(); for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2)); return set; };
+  const alike = (x, y) => { const p = pairs(x), q = pairs(y); let n = 0; for (const k of p) if (q.has(k)) n++; return (2 * n) / Math.max(1, p.size + q.size); };
+  const squash = (s) => String(s || '').replace(/\s+/g, '');
+  const same = (x, y) => Math.abs(parseInt(x.line, 10) - parseInt(y.line, 10)) <= 1
+    && (alike(x.title, y.title) > 0.55 || alike(x.say, y.say) > 0.6 || (x.find && squash(x.find) === squash(y.find)));
+  const out = [...a];
+  for (const e of b) if (e?.say && !out.some((o) => same(o, e))) out.push(e);
+  return out.sort((x, y) => parseInt(x.line, 10) - parseInt(y.line, 10));
 }
 // Max's errors as notes on the files (the line found by its text); a fix that can't be placed exactly gets no Fix button.
 function errorNotes(r) {
@@ -573,6 +627,9 @@ async function applyFix() {
     return say(why);
   }
   n.fixed = true; S.showFix = false;
+  // Other problems on the same line were fixed with it (each fix is the whole line with all its problems fixed).
+  const squash = (s) => String(s).replace(/\s+/g, '');
+  for (const o of S.notes) if (o !== n && !o.fixed && o.find && squash(o.find) === squash(n.find)) o.fixed = true;
   setWaiting(null);
   // The other errors' lines may have moved: find them again by their text.
   for (const o of S.notes) if (o !== n && o.fi === n.fi) o.line = locate(f.code, o.line + (o.line > n.line ? n.replace.split('\n').length - n.find.split('\n').length : 0), o.text);
