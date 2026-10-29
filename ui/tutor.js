@@ -57,14 +57,14 @@ async function askMax(prompt, label, think = false) {
   busy(label);
   if (!think) task(null);
   try {
-    for (let attempt = 0; attempt < (think ? 1 : 2); attempt++) {
+    for (let attempt = 0; attempt < (think === true ? 1 : 2); attempt++) {
       const text = await window.max.tutorAsk(id, [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }], think);
       if (id !== reqId) return null;
       try { return parseJSON(text); } catch {}
     }
     throw new Error("Max's answer came back garbled. Try again.");
   } catch (e) {
-    if (id === reqId && !think) { task(String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, ''), 'bad'); say("Sorry, that didn't work."); }
+    if (id === reqId && think !== true) { task(String(e.message).replace(/^Error invoking remote method '\w+': (Error: )?/, ''), 'bad'); say("Sorry, that didn't work."); }
     return null;
   } finally { if (id === reqId) busy(null); }
 }
@@ -487,8 +487,10 @@ async function debug(files, { editor, dirty, onScreen } = {}) {
 {"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
 kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].
 A fix ("replace") is the smallest change that makes the program correct and do what it is clearly meant to do, written as the complete corrected line or lines with the same indentation. Never delete, blank out or comment out working logic, and never add comments. If the fix needs a new line next to this one (declaring a variable, reading input), put it in "replace" together with this line.`;
+  // One pass, on NVIDIA's big model without reasoning (~3 s): accurate first time, so nothing changes after you start
+  // fixing. (A quick small-model pass plus a slow careful one used to replace the list while you were working on it.)
   const r = await askMax(`Debug this code. ${RULES}\n${code}\n${SHAPE}`,
-    `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`);
+    `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`, 'big');
   if (!r) return;
   const unsaved = dirty ? ` (${files[0].name} has unsaved changes in ${editor || 'your editor'}: I read the saved version.)` : '';
   S.lang ||= String(r.lang || '');
@@ -502,21 +504,7 @@ A fix ("replace") is the smallest change that makes the program correct and do w
     if (S.onScreen && S.notes.length) { window.max.mode('pet'); screenNote(); }
   };
   show(r);
-  const first = S.notes.map((n) => n.line);
-  say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}` : "I couldn't find any problems in it. I'll double-check.");
-  const prior = (r.errors || []).map((e) => `- line ${e.line}: ${e.title || e.kind || ''}: ${e.say}`).join('\n') || '- nothing';
-  const deep = await askMax(`Double-check this code. ${RULES}
-A quick first look reported:
-${prior}
-Check each of those against the code: keep only the ones that really happen, and add any real problem it missed. Reply with the full, corrected list.
-${code}
-${SHAPE}`, 'Max is double-checking', true);
-  if (!deep || S.kind !== 'debug') return;
-  const checked = errorNotes(deep);
-  if (checked.length === first.length && checked.every((c, i) => Math.abs(c.line - first[i]) <= 1)) return;   // it agrees
-  show(deep);
-  say(!S.notes.length ? 'I double-checked, and those were false alarms. Your code looks right.'
-    : `I double-checked, and it's ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}`);
+  say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}` : "I couldn't find any problems in it.");
 }
 // Max's errors as notes on the files (the line found by its text); a fix that can't be placed exactly gets no Fix button.
 function errorNotes(r) {
@@ -527,7 +515,9 @@ function errorNotes(r) {
     const text = e.text || String(e.find || '').split('\n')[0];
     const n = { fi, line: locate(f.code, e.line, text), text, say: String(e.say), kind: String(e.kind || 'error'), title: String(e.title || ''),
       find: unnumber(e.find).replace(/\r\n/g, '\n'), replace: unnumber(e.replace ?? '').replace(/\r\n/g, '\n'), path: f.path, fileName: f.name };
-    if (n.find && (!f.code.includes(n.find) || n.find.trim() === n.replace.trim())) n.find = '';   // not in the code, or a "fix" that changes nothing
+    // Not in the code (ignoring spaces and tabs, as Apply fix does), or a "fix" that changes nothing: no Fix button.
+    const squash = (s) => String(s).replace(/\s+/g, '');
+    if (n.find && (!squash(f.code).includes(squash(n.find)) || squash(n.find) === squash(n.replace))) n.find = '';
     return n;
   });
 }

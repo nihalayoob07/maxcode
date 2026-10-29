@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('max', {
   cancelSpeak: (id) => ipcRenderer.send('cancelSpeak', id),
   tutorState: (w) => ipcRenderer.send('tutorState', w),
   cancelChat: (id) => ipcRenderer.send('chat-cancel', id),
-  tutorAsk: (id, messages, think) => ipcRenderer.invoke('tutorAsk', id, messages, !!think),
+  tutorAsk: (id, messages, think) => ipcRenderer.invoke('tutorAsk', id, messages, think === 'big' ? 'big' : !!think),
   course: (lang, data) => ipcRenderer.invoke('course', lang, data),
   tutorSave: (fix) => ipcRenderer.invoke('tutorSave', fix),
   tutorRead: (p) => ipcRenderer.invoke('tutorRead', p),

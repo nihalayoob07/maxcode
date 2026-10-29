@@ -218,4 +218,22 @@ function applyFix({ file, find, replace }) {
   return updated.replace(/\r\n/g, '\n');
 }
 
-module.exports = { intent, command, language, parseTitle, editorCode, allow, readDropped, applyFix };
+// A fix made in the editor's real text (copied out of it by main.js): the lines matching `find` (ignoring spaces, so
+// the screen read's spacing doesn't matter), nearest `line` if they appear twice, become `replace`, re-indented to the
+// document's own indentation, with its own line endings. null if they aren't there.
+function fixInText(doc, find, replace, line = 1) {
+  if (!doc || !find) return null;
+  const eol = doc.includes('\r\n') ? '\r\n' : '\n', lines = doc.split(/\r?\n/);
+  const squash = (s) => s.replace(/\s+/g, ''), want = find.split('\n').map(squash);
+  let at = -1;
+  for (let i = 0; i + want.length <= lines.length; i++) {
+    if (want.every((w, j) => squash(lines[i + j]) === w) && (at < 0 || Math.abs(i + 1 - line) < Math.abs(at + 1 - line))) at = i;
+  }
+  if (at < 0) return null;
+  const indent = lines[at].match(/^\s*/)[0], rep = replace.split('\n');
+  const base = (rep.find((l) => l.trim()) || '').match(/^\s*/)[0];
+  const out = rep.map((l) => (l.trim() ? indent + (l.startsWith(base) ? l.slice(base.length) : l.trimStart()) : ''));
+  return [...lines.slice(0, at), ...out, ...lines.slice(at + want.length)].join(eol);
+}
+
+module.exports = { intent, command, language, parseTitle, editorCode, allow, readDropped, applyFix, fixInText };

@@ -101,9 +101,10 @@ const LEVELS = {
 ipcMain.handle('tutorAsk', (_e, id, messages, think) => {
   const level = LEVELS[prefs.level] || LEVELS.beginner;
   messages = messages.map((m, i) => (i === 0 && m.role === 'system' ? { ...m, content: `${m.content} ${level}` } : m));
-  // think: the careful second look, on NVIDIA's big model (much better at real bugs and sound fixes), at most 90 s.
+  // think: NVIDIA's big model (much better at real bugs and sound fixes), no reasoning (~3 s). 'big' (debugging) waits
+  // as long as any question; true (a quiet extra look) gives up after 90 s.
   return ask({ model: think ? VL_MODEL : MODEL, messages, temperature: think ? 0.1 : 0.3, max_tokens: think ? 8000 : 4000,
-    chat_template_kwargs: { enable_thinking: false } }, id, undefined, think ? 90000 : 280000);
+    chat_template_kwargs: { enable_thinking: false } }, id, undefined, think === true ? 90000 : 280000);
 });
 ipcMain.on('chat-cancel', (_e, id) => asks.get(id)?.abort());
 
@@ -589,16 +590,26 @@ ipcMain.on('calloutAct', (_e, cmd) => {
   if (cmd === 'close') { if (callout && !callout.isDestroyed()) callout.close(); callout = null; return; }
   win.webContents.send('tutor', { kind: 'cmd', cmd });
 });
-// Click the start of a line, select it (and the lines under it the fix covers) and paste: works in any text editor.
-const TYPE = `Add-Type -AssemblyName System.Windows.Forms
-Add-Type -Name Input -Namespace MaxCode -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, System.IntPtr e);'
+// Fixing in the editor: click into the code, copy the whole document (Ctrl+A, Ctrl+C), make the fix in that real text
+// (shared/tutor.js fixInText: exact indentation and line endings kept), paste it all back (Ctrl+A, Ctrl+V). Works in any
+// editor, and one Ctrl+Z there undoes it. Keys are sent as real key presses (keybd_event): SendKeys' Shift+End became
+// numpad End with Num Lock on, so nothing was selected. MAXCODE_EXPECT_WINDOW (tests) refuses any other window.
+const KEYS = `Add-Type -Name Input -Namespace MaxCode -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, System.UIntPtr e); [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, System.UIntPtr e); [DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(System.IntPtr h, System.Text.StringBuilder s, int n);'
 $null = [MaxCode.Input]::SetProcessDPIAware()
 $at = $env:MAXCODE_AT -split ','
-$null = [MaxCode.Input]::SetCursorPos([int]$at[0], [int]$at[1])
-[MaxCode.Input]::mouse_event(2, 0, 0, 0, [System.IntPtr]::Zero); [MaxCode.Input]::mouse_event(4, 0, 0, 0, [System.IntPtr]::Zero)
-Start-Sleep -Milliseconds 300
-[System.Windows.Forms.SendKeys]::SendWait($env:MAXCODE_KEYS)
-Start-Sleep -Milliseconds 300
+function Press($vk) { [MaxCode.Input]::keybd_event($vk, 0, 0, [UIntPtr]::Zero); [MaxCode.Input]::keybd_event($vk, 0, 2, [UIntPtr]::Zero) }
+function Ctrl($vk) { [MaxCode.Input]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero); Press $vk; [MaxCode.Input]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 120 }
+if ($env:MAXCODE_STEP -ne 'paste') {
+  $null = [MaxCode.Input]::SetCursorPos([int]$at[0], [int]$at[1])
+  [MaxCode.Input]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); [MaxCode.Input]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 250
+}
+if ($env:MAXCODE_EXPECT_WINDOW) {
+  $t = New-Object System.Text.StringBuilder 256; $null = [MaxCode.Input]::GetWindowText([MaxCode.Input]::GetForegroundWindow(), $t, 256)
+  if (-not $t.ToString().Contains($env:MAXCODE_EXPECT_WINDOW)) { exit 3 }
+}
+if ($env:MAXCODE_STEP -eq 'copy') { Ctrl 0x41; Ctrl 0x43; Start-Sleep -Milliseconds 200 }
+if ($env:MAXCODE_STEP -eq 'paste') { Ctrl 0x41; Ctrl 0x56; Start-Sleep -Milliseconds 250 }
 $null = [MaxCode.Input]::SetCursorPos([int]$at[2], [int]$at[3])`;
 ipcMain.handle('typeFix', async (_e, { line, find, replace }) => {
   // Find the line again, as it is now: the first line of what the fix replaces, nearest where it was (if known).
@@ -621,10 +632,18 @@ ipcMain.handle('typeFix', async (_e, { line, find, replace }) => {
   } else throw new Error("I can't find that line on screen any more (scrolled away?). Run Debug my code again.");
   const point = (px, py) => screen.dipToScreenPoint({ x: Math.round(display.bounds.x + px * k), y: Math.round(display.bounds.y + py * k) });
   const at = point(x, y), back = screen.dipToScreenPoint(screen.getCursorScreenPoint());
-  const old = clipboard.readText();
-  clipboard.writeText(replace);
-  const keys = `{HOME}{HOME}${'+{DOWN}'.repeat(find.split('\n').length - 1)}+{END}^v`;
-  try { await powershell(TYPE, { MAXCODE_AT: [at.x, at.y, back.x, back.y].join(','), MAXCODE_KEYS: keys }); } finally {
+  const where = { MAXCODE_AT: [at.x, at.y, back.x, back.y].join(',') }, old = clipboard.readText();
+  clipboard.writeText('');   // so a copy that didn't happen can't be mistaken for the document
+  try {
+    await powershell(KEYS, { ...where, MAXCODE_STEP: 'copy' });
+    const fixed = tutorCode.fixInText(clipboard.readText(), find, replace, line);
+    if (!fixed) {
+      await powershell(KEYS, { ...where, MAXCODE_STEP: 'click' });   // just the click: drops the select-all, changes nothing
+      throw new Error("I couldn't find that code in your editor, so I didn't change anything.");
+    }
+    clipboard.writeText(fixed);
+    await powershell(KEYS, { ...where, MAXCODE_STEP: 'paste' });
+  } finally {
     setTimeout(() => clipboard.writeText(old), 1500);   // your clipboard, as it was
   }
   return true;
