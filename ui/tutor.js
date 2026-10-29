@@ -179,7 +179,9 @@ function render() {
   const fixLines = fix ? new Set(Array.from({ length: fix.find.split('\n').length }, (_, i) => fix.line + i)) : new Set();
   $('#code').innerHTML = hl(f.code, S.lang).map((html, i) => {
     const no = i + 1, on = no === arrow;
-    const b = (badges[no] || []).map((n) => `<b class="${n.fixed ? 'ok' : ''}">${n.fixed ? '✓' : n.n}</b>`).join('');
+    // One badge per line (the first open problem, or ✓), "+2" for the rest: three badges ran over the code.
+    const list = badges[no] || [], open = list.filter((n) => !n.fixed), first = open[0] || list[0];
+    const b = first ? `<b class="${open.length ? '' : 'ok'}">${open.length ? first.n : '✓'}</b>${open.length > 1 ? `<b>+${open.length - 1}</b>` : ''}` : '';
     const cls = ['ln', on ? 'on' : '', badges[no]?.some((n) => !n.fixed) || fixLines.has(no) ? 'bad' : ''].join(' ');
     return `<div class="${cls}" data-line="${no}"><span class="g">${b}${on ? '▶ ' : ''}${no}</span><span class="tx">${html || ' '}</span></div>`
       + (on ? noteHTML() : '');

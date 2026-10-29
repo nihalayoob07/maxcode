@@ -425,7 +425,7 @@ const SHOT = `Add-Type -AssemblyName System.Drawing
 Add-Type -Name Dpi -Namespace MaxCode -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
 $null = [MaxCode.Dpi]::SetProcessDPIAware()
 $r = $env:MAXCODE_RECT -split ','
-$b = New-Object System.Drawing.Bitmap ([int]$r[2]), ([int]$r[3])
+$b = New-Object System.Drawing.Bitmap ([int]$r[2]), ([int]$r[3]), ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g = [System.Drawing.Graphics]::FromImage($b)
 $g.CopyFromScreen([int]$r[0], [int]$r[1], 0, 0, $b.Size)
 $b.Save($env:MAXCODE_SHOT, [System.Drawing.Imaging.ImageFormat]::Png)`;
@@ -494,21 +494,38 @@ $null = [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRunti
 $null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics,ContentType=WindowsRuntime]
 $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
 function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(); $t.Result }
-$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:MAXCODE_OCR)) ([Windows.Storage.StorageFile])
-$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
-$decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-$ocr = Await ([Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages().RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-$stream.Dispose()
-ConvertTo-Json -Compress @($ocr.Lines | ForEach-Object {
-  $r = $_.Words | ForEach-Object { $_.BoundingRect }
-  @{ t = $_.Text; x0 = ($r | ForEach-Object { $_.X } | Measure-Object -Minimum).Minimum; y0 = ($r | ForEach-Object { $_.Y } | Measure-Object -Minimum).Minimum;
-     x1 = ($r | ForEach-Object { $_.X + $_.Width } | Measure-Object -Maximum).Maximum; y1 = ($r | ForEach-Object { $_.Y + $_.Height } | Measure-Object -Maximum).Maximum }
-})`;
+$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+$out = foreach ($tile in ($env:MAXCODE_OCR -split ';')) {
+  $p, $ox, $oy = $tile -split '\\|'
+  $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($p)) ([Windows.Storage.StorageFile])
+  $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+  $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  $ocr = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+  $stream.Dispose()
+  foreach ($line in $ocr.Lines) {
+    $r = @($line.Words | ForEach-Object { $_.BoundingRect })
+    [pscustomobject]@{ t = $line.Text
+      x0 = [int]$ox + ($r | ForEach-Object { $_.X } | Measure-Object -Minimum).Minimum; y0 = [int]$oy + ($r | ForEach-Object { $_.Y } | Measure-Object -Minimum).Minimum
+      x1 = [int]$ox + ($r | ForEach-Object { $_.X + $_.Width } | Measure-Object -Maximum).Maximum; y1 = [int]$oy + ($r | ForEach-Object { $_.Y + $_.Height } | Measure-Object -Maximum).Maximum }
+  }
+}
+ConvertTo-Json -Compress @($out)`;
+// The OCR engine reads nothing at all on some full screens (a busy wallpaper behind the code, on Nihal's PC), yet reads
+// the same screen fine in parts. So it reads four overlapping quarters at full sharpness, in one PowerShell, and the
+// lines are put back in screen positions; a line read twice in an overlap is kept once.
 async function ocr(img) {
-  const file = path.join(app.getPath('temp'), `maxcode-ocr-${process.pid}.png`);
-  fs.writeFileSync(file, img.toPNG());
-  try { return [].concat(JSON.parse(await powershell(OCR, { MAXCODE_OCR: file }) || '[]')); } catch { return []; } finally { fs.rm(file, () => {}); }
+  const { width: W, height: H } = img.getSize(), tw = Math.min(W, Math.ceil(W / 2) + 120), th = Math.min(H, Math.ceil(H / 2) + 120);
+  const tiles = [[0, 0], [W - tw, 0], [0, H - th], [W - tw, H - th]].map(([x, y], i) => {
+    const file = path.join(app.getPath('temp'), `maxcode-ocr-${process.pid}-${i}.png`);
+    fs.writeFileSync(file, img.crop({ x, y, width: tw, height: th }).toPNG());
+    return { file, x, y };
+  });
+  try {
+    const all = [].concat(JSON.parse(await powershell(OCR, { MAXCODE_OCR: tiles.map((t) => `${t.file}|${t.x}|${t.y}`).join(';') }) || '[]'))
+      .filter((o) => o && o.t);
+    return all.filter((o, i) => !all.slice(0, i).some((p) => p.t === o.t && Math.abs(p.y0 - o.y0) < 6 && Math.abs(p.x0 - o.x0) < 6));
+  } catch { return []; } finally { tiles.forEach((t) => fs.rm(t.file, () => {})); }
 }
 // How alike two lines are (0-1): shared pairs of letters, ignoring spaces and case (OCR drops and adds those).
 function alike(a, b) {
@@ -551,6 +568,7 @@ let screenSeen = null;   // the last screen read: { seen (OCR lines), k (screen 
 async function findOnScreen(img, code, display) {
   const seen = await ocr(img), k = display.size.width / img.getSize().width;
   screenSeen = { seen, k, display };
+  if (process.env.MAXCODE_DEBUG) console.log('[screen] display', display.id, display.bounds, 'image', img.getSize(), 'OCR lines', seen.length, JSON.stringify(seen.slice(0, 40).map((o) => o.t)));
   const m = matchLines(seen, code);
   if (!m) return null;
   const first = m.all.findIndex((l) => l.trim()), last = m.all.length - 1 - [...m.all].reverse().findIndex((l) => l.trim()), pad = 18;
@@ -657,7 +675,7 @@ ipcMain.handle('screenCode', async () => {
     img, 1600, 4000);   // a failure here (a daily limit, no internet) is the answer: say it, don't pretend there's no code
   const box = read?.out?.code ? await findOnScreen(img, String(read.out.code), display).catch(() => null) : null;
   const found = { out: { lang: read?.out?.lang } };
-  if (process.env.MAXCODE_TEST_SCREEN) console.log('[screen] first read:', JSON.stringify(read?.out), '| located:', box);
+  if (process.env.MAXCODE_TEST_SCREEN || process.env.MAXCODE_DEBUG) console.log('[screen] first read:', JSON.stringify(read?.out), '| located:', box);
   if (box) win.webContents.send('say', 'Is this the code?');
   const answer = await pointAt(display, box);
   if (!answer) return null;
@@ -670,13 +688,19 @@ ipcMain.handle('screenCode', async () => {
   const crop = img.crop({ x: cx, y: cy, width: cw, height: ch });
   const { out } = await look(() => 'Transcribe the source code in this image exactly as written: every line, the same indentation, no line numbers, nothing fixed or added. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code, reply {"code":""}.',
     crop, 1800, 8000).catch(() => ({ out: null }));
-  if (process.env.MAXCODE_TEST_SCREEN) console.log('[screen] first read:', JSON.stringify(read?.out), '| box:', box, '| crop:', crop.getSize(), '| re-read:', JSON.stringify(out));
+  if (process.env.MAXCODE_TEST_SCREEN || process.env.MAXCODE_DEBUG) console.log('[screen] first read:', JSON.stringify(read?.out), '| box:', box, '| crop:', crop.getSize(), '| re-read:', JSON.stringify(out));
   const code = String(out?.code || (answer.rect === box || String(answer.rect) === String(box) ? read?.out?.code : '') || '').replace(/\r/g, '');
   if (!code.trim()) throw new Error("I couldn't read any code there. Try dragging a box around it.");
   const lang = String(out?.lang || found?.out?.lang || '');
+  // Where each line is: from OCR when it matched; otherwise spaced evenly down the box you confirmed (it holds the code),
+  // so the notes and fixes always go on your real code, never only into Max's panel.
   const m = screenSeen && matchLines(screenSeen.seen, code);
-  screenMap = m ? { m, k: screenSeen.k, display: screenSeen.display } : null;
-  return { files: [{ name: `on screen${EXT[lang.toLowerCase()] || ''}`, code }], onScreen: !!screenMap };
+  if (m) screenMap = { m, k: screenSeen.k, display: screenSeen.display };
+  else {
+    const step = (y1 - y0) / Math.max(1, code.replace(/\n+$/, '').split('\n').length);
+    screenMap = { m: { x0, x1, lineH: step, lineY: (i) => y0 + i * step }, k: 1, display };
+  }
+  return { files: [{ name: `on screen${EXT[lang.toLowerCase()] || ''}`, code }], onScreen: true };
 });
 
 function openSettings() {
