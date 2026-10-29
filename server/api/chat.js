@@ -2,12 +2,15 @@
 // models are allowed, so the key can't be used as a general NVIDIA proxy. The reply is NVIDIA's, passed straight back.
 import { guard, json } from '../lib/limits.js';
 
-const MODELS = { 'nvidia/nemotron-3.5-lightning-30b-a3b': 'chat', 'nvidia/nemotron-3.5-super-vl-120b-a12b': 'vision' };
+const MODELS = ['nvidia/nemotron-3.5-lightning-30b-a3b', 'nvidia/nemotron-3.5-super-vl-120b-a12b'];
+
+// What a request counts against: a screen read (it carries a screenshot) or an ordinary question.
+const kindOf = (messages) => (messages.some((m) => Array.isArray(m?.content) && m.content.some((p) => p?.type === 'image_url')) ? 'vision' : 'chat');
 
 export async function POST(request) {
   const body = await request.json().catch(() => null);
-  const kind = MODELS[body?.model];
-  if (!kind || !Array.isArray(body.messages)) return json({ error: 'Not a Max Code request.' }, 400);
+  if (!MODELS.includes(body?.model) || !Array.isArray(body.messages)) return json({ error: 'Not a Max Code request.' }, 400);
+  const kind = kindOf(body.messages);
   const stop = await guard(request, kind, 1);
   if (stop) return stop;
   const res = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {

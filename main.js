@@ -103,7 +103,9 @@ ipcMain.handle('tutorAsk', (_e, id, messages, think) => {
   messages = messages.map((m, i) => (i === 0 && m.role === 'system' ? { ...m, content: `${m.content} ${level}` } : m));
   // think: NVIDIA's big model (much better at real bugs and sound fixes), no reasoning (~3 s). 'big' (debugging) waits
   // as long as any question; true (a quiet extra look) gives up after 90 s.
-  return ask({ model: think ? VL_MODEL : MODEL, messages, temperature: think ? 0.1 : 0.3, max_tokens: think ? 8000 : 4000,
+  // Everything the tutor asks goes to the big model: without reasoning it answers in ~3 s, and the small one got
+  // things plainly wrong (it told a user `int a,b` needed commas).
+  return ask({ model: VL_MODEL, messages, temperature: think ? 0.1 : 0.3, max_tokens: think ? 8000 : 4000,
     chat_template_kwargs: { enable_thinking: false } }, id, undefined, think === true ? 90000 : 280000);
 });
 ipcMain.on('chat-cancel', (_e, id) => asks.get(id)?.abort());

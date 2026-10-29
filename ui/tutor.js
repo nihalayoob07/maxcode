@@ -43,11 +43,32 @@ function busy(label) {
   busyTimer = setInterval(tick, 1000);
 }
 window.max.onStream((d) => { if (d.id === reqId && d.kind === 'delta') $('#busy span').dataset.writing = '1'; });
+// Max's JSON, as models really send it: the first complete object (the big model sometimes sends it twice, or adds a
+// stray "}"), with raw tabs and line breaks inside strings escaped (it copies them straight from the code).
 function parseJSON(text) {
   const t = String(text).replace(/```(?:json)?/g, '');
-  const a = t.indexOf('{'), b = t.lastIndexOf('}');
-  if (a < 0 || b < a) throw new Error('no JSON');
-  return JSON.parse(t.slice(a, b + 1));
+  const a = t.indexOf('{');
+  if (a < 0) throw new Error('no JSON');
+  let depth = 0, inStr = false, esc = false, out = '';
+  for (let i = a; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      out += c === '\n' ? '\\n' : c === '\r' ? '\\r' : c === '\t' ? '\\t' : c;
+      continue;
+    }
+    out += c;
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return JSON.parse(out);
+  }
+  // Cut short without its closing brackets: close them and try.
+  for (const end of ['}'.repeat(depth), `]${'}'.repeat(depth)}`, `"}]${'}'.repeat(Math.max(0, depth - 1))}`]) {
+    try { return JSON.parse(out + end); } catch {}
+  }
+  throw new Error('no complete JSON');
 }
 // One question to Max; a garbled answer is asked once more. Returns null if a newer question replaced it.
 // think: a careful second look with reasoning. It runs behind what's already on screen, so if it's slow, garbled or
@@ -482,7 +503,7 @@ async function debug(files, { editor, dirty, onScreen } = {}) {
 - A correct program has no errors: then errors is []. Most short programs are correct. Never invent a problem to have something to say.
 - No style, naming, formatting or "could be better" remarks, and no warnings about input the program never gets.
 - A logic error only counts if the code clearly doesn't do what its own names, comments or printed text say it is for.`;
-  const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code)}`).join('\n\n')}`;
+  const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code.replace(/\t/g, '    '))}`).join('\n\n')}`;   // no tabs for Max to copy into his JSON
   const SHAPE = `Reply exactly in this shape:
 {"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
 kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].
@@ -512,9 +533,13 @@ function errorNotes(r) {
     const fi = Math.max(0, S.files.findIndex((f) => f.name === e.file));
     const f = S.files[fi];
     // The line's own text places the note; when Max leaves it out, the first line his fix replaces does.
-    const text = e.text || String(e.find || '').split('\n')[0];
-    const n = { fi, line: locate(f.code, e.line, text), text, say: String(e.say), kind: String(e.kind || 'error'), title: String(e.title || ''),
-      find: unnumber(e.find).replace(/\r\n/g, '\n'), replace: unnumber(e.replace ?? '').replace(/\r\n/g, '\n'), path: f.path, fileName: f.name };
+    // Tabs and line breaks sometimes arrive written out as \t and \n: real ones, unless the code itself has backslashes.
+    const real = (s) => (/\\[tn]/.test(s) && !f.code.includes('\\') ? s.replace(/\\t/g, '\t').replace(/\\n/g, '\n') : s);
+    const find = real(unnumber(e.find)).replace(/\r\n/g, '\n'), replace = real(unnumber(e.replace ?? '')).replace(/\r\n/g, '\n');
+    const text = real(String(e.text || '')) || find.split('\n')[0];
+    // The line may come as text ("4| int a,b"): its number is what counts.
+    const n = { fi, line: locate(f.code, parseInt(e.line, 10), text), text, say: String(e.say), kind: String(e.kind || 'error'), title: String(e.title || ''),
+      find, replace, path: f.path, fileName: f.name };
     // Not in the code (ignoring spaces and tabs, as Apply fix does), or a "fix" that changes nothing: no Fix button.
     const squash = (s) => String(s).replace(/\s+/g, '');
     if (n.find && (!squash(f.code).includes(squash(n.find)) || squash(n.find) === squash(n.replace))) n.find = '';

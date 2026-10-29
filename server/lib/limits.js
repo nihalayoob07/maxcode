@@ -4,7 +4,7 @@
 // Days are UTC. Users with their own keys never come here.
 
 // Per install per day: questions, vision calls (a screen read is two), characters Max says (~1 minute).
-export const LIMITS = { chat: 60, vision: 45, voice: 900 };   // vision: screen reads (2 each) and the careful debug pass (1)
+export const LIMITS = { chat: 60, vision: 20, voice: 900 };   // vision: screen reads (2 calls each)
 const PER_IP = 5;
 const TOTAL = {
   chat: Number(process.env.CAP_CHAT || 3000),
