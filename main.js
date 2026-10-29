@@ -558,7 +558,17 @@ function matchLines(seen, code) {
     const run = runs[runs.length - 1];
     if (h.y0 - run[run.length - 1].y1 > 5 * lineH) runs.push([h]); else run.push(h);
   }
-  const block = runs.reduce((x, y) => (y.length > x.length ? y : x));
+  const block = runs.reduce((x, y) => (y.length > x.length ? y : x)).slice();
+  // A stray match close above or below (the tab title "#includestdio.h" sits just above the code) doesn't fit the line
+  // spacing of the rest: such ends are dropped, or they'd throw the spacing off and Apply fix would click the tab.
+  if (block.length > 2) {
+    const stepOf = (a, b) => (b.y0 - a.y0) / (b.i - a.i);
+    const steps = block.slice(1).map((h, j) => stepOf(block[j], h)).filter((s) => s > 0 && Number.isFinite(s)).sort((a, b) => a - b);
+    const med = steps[Math.floor(steps.length / 2)];
+    const fits = (a, b) => { const s = stepOf(a, b); return s > 0 && Math.abs(s - med) <= med * 0.35; };
+    while (med && block.length > 2 && !fits(block[0], block[1])) block.shift();
+    while (med && block.length > 2 && !fits(block[block.length - 2], block[block.length - 1])) block.pop();
+  }
   const top = block[0], bottom = block[block.length - 1];
   const step = bottom.i > top.i ? (bottom.y0 - top.y0) / (bottom.i - top.i) : lineH * 1.35;
   // As wide as the longest line, by the width of the letters OCR found (long lines are often the ones it missed).
@@ -679,7 +689,7 @@ async function typeFix(list, code) {
   const k = display.size.width / img.getSize().width, m = findCode(await ocr(img), display, k, code);
   if (!m) throw new Error("I can't see your code on screen right now. Bring it back into view, then press Apply fix again.");
   screenMap = { m, k, display };
-  const x = m.top.x0 + 2, y = (m.top.y0 + m.top.y1) / 2;
+  const mid = m.block[Math.floor(m.block.length / 2)], x = mid.x0 + 2, y = (mid.y0 + mid.y1) / 2;   // a line in the middle: surely the code
   const point = (px, py) => screen.dipToScreenPoint({ x: Math.round(display.bounds.x + px * k), y: Math.round(display.bounds.y + py * k) });
   const at = point(x, y), back = screen.dipToScreenPoint(screen.getCursorScreenPoint());
   const where = { MAXCODE_AT: [at.x, at.y, back.x, back.y].join(',') }, old = clipboard.readText();
