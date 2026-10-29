@@ -562,7 +562,7 @@ function matchLines(seen, code) {
   // As wide as the longest line, by the width of the letters OCR found (long lines are often the ones it missed).
   const charW = block.map((h) => (h.x1 - h.x0) / Math.max(1, String(h.t).length)).sort((a, b) => a - b)[Math.floor(block.length / 2)];
   const x0 = Math.min(...block.map((h) => h.x0)), widest = Math.max(...all.map((l) => l.replace(/\t/g, '    ').trimEnd().length));
-  const x1 = Math.max(...block.map((h) => h.x1), x0 + (widest + 2) * charW);
+  const x1 = Math.max(...block.map((h) => h.x1), x0 + (widest + 5) * charW);   // + a few: OCR's letter width runs a bit small
   return { all, block, top, bottom, step, lineH, x0, x1, lineY: (i) => top.y0 + (i - top.i) * step };
 }
 let screenSeen = null;   // the last screen read: { seen (OCR lines), k (screen points per image pixel), display }

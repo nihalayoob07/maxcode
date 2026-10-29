@@ -569,7 +569,11 @@ function undeclared(file, lang, errors) {
   const squash = (s) => String(s || '').replace(/\s+/g, '');
   const usable = (e) => e.find && squash(code).includes(squash(unnumber(e.find))) && squash(e.find) !== squash(e.replace);
   const said = (re, name) => errors.find((e) => (typeof S === 'undefined' || S.files.length < 2 || e.file === file.name) && re.test(`${e.title}`) && new RegExp(`\\b${name}\\b`).test(`${e.title} ${e.say} ${e.find}`));
-  const report = (e, re, name) => { const had = said(re, name); if (!had) return found.push(e); if (!usable(had)) Object.assign(had, { find: e.find, replace: e.replace, line: e.line, text: e.text }); };
+  const report = (e, re, name) => {
+    // This fix ends the line with ; too: a note on the same line that only adds the ; gets this fix, so whichever is
+    // applied first fixes both (otherwise the ; fix lands, the line no longer matches, and the declaration is lost).
+    for (const o of errors) if (o.find && squash(unnumber(o.find)) === squash(e.find) && squash(unnumber(o.replace)) === `${squash(e.find).replace(/;$/, '')};`) o.replace = e.replace;
+    const had = said(re, name); if (!had) return found.push(e); if (!usable(had)) Object.assign(had, { find: e.find, replace: e.replace, line: e.line, text: e.text }); };
   const found = [], lines = code.split('\n');
   lines.forEach((l, i) => {
     const m = /^(\s*)([A-Za-z_]\w*)\s*=[^=]/.exec(l);
