@@ -128,7 +128,7 @@ function task(text, cls = '', label = '') {
 }
 const btn = (label, act, cls = '', disabled = false) => `<button class="btn ${cls}" data-act="${act}"${disabled ? ' disabled' : ''}>${esc(label)}</button>`;
 const current = () => S.notes[S.at];
-const fixable = () => S.notes.filter((n) => !n.fixed && n.find).length;
+const fixable = () => S.notes.filter((n) => !n.fixed).length;   // Fix all fixes them all, with or without a line fix
 
 function noteHTML() {
   if (S.answer) return `<div class="note"><div class="head">MAX</div>${rich(S.answer.say)}<div class="acts">${btn('Back', 'back', 'p')}</div></div>`;
@@ -572,8 +572,12 @@ function undeclared(file, lang, errors) {
   const report = (e, re, name) => {
     // This fix ends the line with ; too: a note on the same line that only adds the ; gets this fix, so whichever is
     // applied first fixes both (otherwise the ; fix lands, the line no longer matches, and the declaration is lost).
+    const had = said(re, name);
+    if (had && usable(had)) return;   // Max's own fix stands (it may declare the variable elsewhere)
     for (const o of errors) if (o.find && squash(unnumber(o.find)) === squash(e.find) && squash(unnumber(o.replace)) === `${squash(e.find).replace(/;$/, '')};`) o.replace = e.replace;
-    const had = said(re, name); if (!had) return found.push(e); if (!usable(had)) Object.assign(had, { find: e.find, replace: e.replace, line: e.line, text: e.text }); };
+    if (!had) return found.push(e);
+    Object.assign(had, { find: e.find, replace: e.replace, line: e.line, text: e.text });
+  };
   const found = [], lines = code.split('\n');
   lines.forEach((l, i) => {
     const m = /^(\s*)([A-Za-z_]\w*)\s*=[^=]/.exec(l);
@@ -688,33 +692,51 @@ function fixedNote(n, f) {
   for (const o of S.notes) if (o !== n && o.fi === n.fi) o.line = locate(f.code, o.line + (o.line > n.line ? n.replace.split('\n').length - n.find.split('\n').length : 0), o.text);
   n.line = locate(f.code, n.line, n.replace.split('\n')[0]);
 }
-// Fix all: every problem that has a fix, in one go. On screen it's one copy and one paste (one Ctrl+Z undoes it all).
+// Fix all: Max rewrites each file with every open problem fixed together, and the file is replaced (on screen: one
+// paste, one Ctrl+Z undoes it all). Applying the line fixes one by one clashed: two fixes for one line (a ; and a
+// declaration), or two fixes declaring the same variable on different lines.
 async function fixAll() {
-  let todo = S.notes.filter((n) => !n.fixed && n.find);
-  if (!todo.length) return say("There's nothing left I can fix by myself.");
+  const open = S.notes.filter((n) => !n.fixed);
+  if (!open.length) return say('Everything is fixed already.');
   S.showFix = false; setWaiting(null);
-  if (S.onScreen) {
-    try {
-      const landed = await window.max.typeFix({ fixes: todo.map((n) => ({ line: n.line, find: n.find, replace: n.replace })) });
-      todo = todo.filter((_, i) => landed[i]);
-    } catch (e) { return fixFailed(e); }
-  }
-  const saved = new Set();
-  for (const n of todo) {
-    if (n.fixed) continue;   // fixed along with another problem on its line
-    const f = S.files[n.fi];
-    try {
-      if (f.path) { f.code = await window.max.tutorSave({ file: f.path, find: n.find, replace: n.replace }); saved.add(f.name); }
-      else f.code = f.code.replace(n.find, () => n.replace);
-      fixedNote(n, f);
-    } catch {}   // that file changed under it: the problem stays open, the rest still get fixed
-  }
-  S.at = Math.max(0, S.notes.findIndex((x) => !x.fixed));
-  S.fi = current()?.fi ?? S.fi;
+  const files = S.files.filter((_, fi) => open.some((n) => n.fi === fi));
+  // One request per file, all at once (one reply holding five whole files came back with only the first). The other
+  // files go along so calls and declarations across files can be checked.
+  const prompt = (f) => `Fix every one of these problems in ${f.name}, all together.
+Problems:
+${open.filter((n) => S.files[n.fi] === f).map((n) => `- line ${n.line}: ${n.title}: ${n.say}${n.find ? ` (a suggested fix for that line: ${n.replace.replace(/\n/g, ' / ')})` : ''}`).join('\n')}
+${S.files.filter((o) => o !== f).map((o) => `=== ${o.name} (for reference, don't change it) ===\n${o.code.replace(/\t/g, '    ')}`).join('\n\n')}
+=== ${f.name} ===
+${f.code.replace(/\t/g, '    ')}
+Change only what fixing these needs: keep every other line, the order, the indentation and any comments exactly as they are. The fixes must work together: the result compiles and runs correctly, no variable is declared twice, and every variable is declared and given a value before it is used.
+Reply exactly in this shape:
+{"code":"the whole corrected ${f.name}"}`;
+  busy('Max is fixing everything');
+  const answers = await Promise.all(files.map((f) => window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt(f) }], 'big').then(parseJSON).catch(() => null)));
+  busy(null);
+  if (!answers.some((a) => a?.code)) { task("I couldn't get the fixes just now. Try again, or fix them one by one.", 'bad'); render(); return say("Sorry, that didn't work."); }
+  const saved = [];
+  try {
+    for (const [i, f] of files.entries()) {
+      let fixed = tidy(answers[i]?.code);
+      if (!fixed || fixed === tidy(f.code)) continue;
+      // What the rewrite still left undeclared or without a value gets Max's own line fix (bottom up, so the line
+      // numbers hold).
+      const ls = fixed.split('\n');
+      for (const e of undeclared({ name: f.name, code: fixed }, S.lang, []).sort((a, b) => b.line - a.line)) ls.splice(e.line - 1, 1, ...e.replace.split('\n'));
+      fixed = ls.join('\n');
+      const replace = fixed + (f.code.endsWith('\n') ? '\n' : '');
+      if (S.onScreen) await window.max.typeFix({ line: 1, find: f.code.replace(/\n+$/, ''), replace: fixed });
+      if (f.path) { f.code = await window.max.tutorSave({ file: f.path, find: f.code, replace }); saved.push(f.name); }
+      else f.code = replace;
+      for (const n of open) if (S.files[n.fi] === f) { n.fixed = true; n.line = locate(f.code, n.line, n.find ? n.replace.split('\n')[0] : n.text); }
+    }
+  } catch (e) { return fixFailed(e); }
+  const left = S.notes.filter((x) => !x.fixed).length;
+  task(left ? `${left} problem${left > 1 ? 's' : ''} left.` : 'All fixed.', left ? 'bad' : '', left ? 'DEBUG' : 'FIXED');
   render();
   if (S.onScreen) screenNote();
-  const left = S.notes.filter((x) => !x.fixed).length;
-  say(`Fixed ${S.notes.length - left} of ${S.notes.length}${saved.size ? `, saved to ${[...saved].join(', ')}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} left to fix by hand.` : ''}`);
+  say(`Fixed ${S.notes.length - left} of ${S.notes.length}${saved.length ? `, saved to ${saved.join(', ')}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} left.` : ''}`);
 }
 
 /* ---------- Questions ---------- */
