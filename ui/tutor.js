@@ -561,13 +561,39 @@ function undeclared(file, lang, errors) {
       if (n) names.add(n[1]);
     }
   }
-  const found = [], said = (name) => errors.some((e) => /declar/i.test(e.title) && `${e.title} ${e.say} ${e.find}`.includes(name));   // by its title: a "no value" note may say "declared" too
-  code.split('\n').forEach((l, i) => {
+  // Max's own note on it, if he made one (by its title: a "no value" note may say "declared" too). When his note has no
+  // usable fix, it gets this one instead of being left without an Apply fix button.
+  const squash = (s) => String(s || '').replace(/\s+/g, '');
+  const usable = (e) => e.find && squash(code).includes(squash(unnumber(e.find))) && squash(e.find) !== squash(e.replace);
+  const said = (re, name) => errors.find((e) => re.test(`${e.title}`) && `${e.title} ${e.say} ${e.find}`.includes(name));
+  const report = (e, re, name) => { const had = said(re, name); if (!had) return found.push(e); if (!usable(had)) Object.assign(had, { find: e.find, replace: e.replace, line: e.line, text: e.text }); };
+  const found = [], lines = code.split('\n');
+  lines.forEach((l, i) => {
     const m = /^(\s*)([A-Za-z_]\w*)\s*=[^=]/.exec(l);
-    if (!m || names.has(m[2]) || said(m[2]) || found.some((f) => f.name === m[2])) return;
-    found.push({ name: m[2], file: file.name, line: i + 1, text: l, kind: 'syntax', title: 'variable not declared',
+    if (!m || names.has(m[2]) || found.some((f) => f.name === m[2])) return;
+    report({ name: m[2], file: file.name, line: i + 1, text: l, kind: 'syntax', title: 'variable not declared',
       say: `\`${m[2]}\` is used here but never declared, so the compiler doesn't know what it is. Declare it with its type first.`,
-      find: l, replace: `${m[1]}int ${l.trim().replace(/;?\s*$/, ';')}` });
+      find: l, replace: `${m[1]}int ${l.trim().replace(/;?\s*$/, ';')}` }, /declar/i, m[2]);
+  });
+  // Number variables declared without a value ("int a, b;") whose value is read before anything is put in them: the
+  // fix keeps the declaration and gives each one a value on its own line. ponytail: values are placeholders (2, 3, ...)
+  // and only straight-line code is followed; a value set inside an if or loop above the read still counts as set.
+  lines.forEach((l, i) => {
+    const d = /^(\s*)(?:int|float|double|long)\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*;?\s*$/.exec(l);
+    if (!d) return;
+    const empty = d[2].split(',').map((s) => s.trim()).filter((name) => {
+      for (const later of lines.slice(i + 1)) {
+        if (new RegExp(`^\\s*${name}\\s*=[^=]`).test(later) && !new RegExp(`=.*\\b${name}\\b`).test(later.replace(/^[^=]*=/, '='))) return false;   // given a value first
+        if (new RegExp(`&\\s*${name}\\b`).test(later)) return false;   // read in with scanf
+        if (new RegExp(`\\b${name}\\b`).test(later)) return true;   // read while still empty
+      }
+      return false;
+    });
+    if (!empty.length) return;
+    const names2 = empty.map((n) => `\`${n}\``).join(' and ');
+    report({ file: file.name, line: i + 1, text: l, kind: 'runtime', title: 'variable has no value',
+      say: `${names2} ${empty.length > 1 ? 'are' : 'is'} declared but never given a value, so the program works with whatever garbage is in memory. Give ${empty.length > 1 ? 'them values' : 'it a value'} before using ${empty.length > 1 ? 'them' : 'it'}.`,
+      find: l, replace: [`${d[1]}${l.trim().replace(/;?\s*$/, ';')}`, ...empty.map((n, j) => `${d[1]}${n} = ${j + 2};`)].join('\n') }, /value|initiali|garbage|uninit/i, empty[0]);
   });
   return found;
 }
