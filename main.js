@@ -510,7 +510,8 @@ $out = foreach ($tile in ($env:MAXCODE_OCR -split ';')) {
       x1 = [int]$ox + ($r | ForEach-Object { $_.X + $_.Width } | Measure-Object -Maximum).Maximum; y1 = [int]$oy + ($r | ForEach-Object { $_.Y + $_.Height } | Measure-Object -Maximum).Maximum }
   }
 }
-ConvertTo-Json -Compress @($out)`;
+# ASCII only: the console mangles other letters (a "·" on screen came out as a control character and broke the JSON).
+[regex]::Replace((ConvertTo-Json -Compress @($out)), '[^ -~]', { param($m) '\\u{0:x4}' -f [int][char]$m.Value })`;
 // The OCR engine reads nothing at all on some full screens (a busy wallpaper behind the code, on Nihal's PC), yet reads
 // the same screen fine in parts. So it reads four overlapping quarters at full sharpness, in one PowerShell, and the
 // lines are put back in screen positions; a line read twice in an overlap is kept once.
