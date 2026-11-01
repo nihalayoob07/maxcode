@@ -530,6 +530,7 @@ A fix ("replace") is the smallest change that makes the program correct and do w
   // say) that the other catches. Both take ~3 s, so it's no slower.
   // A real compiler first, where this PC has one (main.js compileCheck; compiled, never run): what it says is certain,
   // so it goes to Max as fact, and "it compiles" points him at what happens when it runs.
+  busy(`Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`);   // shown from the very start
   const checked = await Promise.race([window.max.compileCheck(S.files.map((f) => ({ name: f.name, code: f.code })), S.lang).catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 4000))]);
   const facts = !checked ? '' : checked.errors.length
     ? `\nA real compiler (${checked.tool}) reports these. They are certain: each must be in your errors, with its fix.\n${checked.errors.map((e) => `- ${e.file} line ${e.line}: ${e.msg}`).join('\n')}`
@@ -568,7 +569,8 @@ A fix ("replace") is the smallest change that makes the program correct and do w
   r.errors = mergeErrors(r.errors, S.files.flatMap((f) => undeclared(f, r.lang || S.lang, r.errors)));
   // A compiler error nobody reported still gets a note (Fix all fixes it with the rest).
   for (const e of checked?.errors || []) {
-    if (r.errors.some((x) => (x.file || S.files[0].name) === e.file && Math.abs(parseInt(x.line, 10) - e.line) <= 1)) continue;
+    // Compilers name the line after a missing ; (or a few after, past blank lines): a note up to 3 lines above covers it.
+    if (r.errors.some((x) => (x.file || S.files[0].name) === e.file && parseInt(x.line, 10) >= e.line - 3 && parseInt(x.line, 10) <= e.line + 1)) continue;
     const f = S.files.find((x) => x.name === e.file) || S.files[0];
     r.errors.push({ file: f.name, line: e.line, text: f.code.split('\n')[e.line - 1] || '', kind: 'syntax', title: 'does not compile', say: `${checked.tool} says: ${e.msg}`, find: '', replace: '' });
   }
@@ -597,7 +599,9 @@ A fix ("replace") is the smallest change that makes the program correct and do w
 // start of a line that is never declared anywhere. Unless Max already reported it, it becomes an error whose fix
 // declares it (as an int: the usual case) and completes the line.
 function undeclared(file, lang, errors) {
-  if (!/^(c|c\+\+|cpp|java|c#|csharp)$/i.test(String(lang).trim())) return [];
+  const cFamily = /^(c|c\+\+|cpp|java|c#|csharp)$/i.test(String(lang).trim()), joins = /^(javascript|js|typescript|ts|java)$/i.test(String(lang).trim());
+  const js = /^(javascript|js|typescript|ts)$/i.test(String(lang).trim());
+  if (!cFamily && !joins) return [];
   const code = file.code, names = new Set();
   const TYPES = 'int|float|double|char|long|short|bool|boolean|unsigned|signed|auto|var|String|string|size_t|byte|FILE';
   for (const m of code.matchAll(new RegExp(`\\b(?:${TYPES})\\b[ \\t*&]+([^;{}\\n]*)`, 'g'))) {   // one line: a missing ; mustn't reach the next
@@ -610,7 +614,7 @@ function undeclared(file, lang, errors) {
   // usable fix, it gets this one instead of being left without an Apply fix button.
   const squash = (s) => String(s || '').replace(/\s+/g, '');
   const usable = (e) => e.find && squash(code).includes(squash(unnumber(e.find))) && squash(e.find) !== squash(e.replace);
-  const said = (re, name) => errors.find((e) => (typeof S === 'undefined' || S.files.length < 2 || e.file === file.name) && re.test(`${e.title}`) && new RegExp(`\\b${name}\\b`).test(`${e.title} ${e.say} ${e.find}`));
+  const said = (re, name) => errors.find((e) => (typeof S === 'undefined' || S.files.length < 2 || e.file === file.name) && re.test(`${e.title}`) && new RegExp(`\\b${String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(`${e.title} ${e.say} ${e.find}`));
   const report = (e, re, name) => {
     // This fix ends the line with ; too: a note on the same line that only adds the ; gets this fix, so whichever is
     // applied first fixes both (otherwise the ; fix lands, the line no longer matches, and the declaration is lost).
@@ -621,6 +625,9 @@ function undeclared(file, lang, errors) {
     Object.assign(had, { find: e.find, replace: e.replace, line: e.line, text: e.text });
   };
   const found = [], lines = code.split('\n');
+  if (joins) numbersJoinedAsText(code, lines, /^java$/i.test(String(lang).trim())).forEach((e) => report({ ...e, file: file.name }, /join|concat|text|string/i, e.name));
+  classicTraps(code, lines, js).forEach((e) => report({ ...e, file: file.name }, e.said, e.name));
+  if (!cFamily) return found;
   lines.forEach((l, i) => {
     const m = /^(\s*)([A-Za-z_]\w*)\s*=[^=]/.exec(l);
     if (!m || names.has(m[2]) || found.some((f) => f.name === m[2])) return;
@@ -677,6 +684,124 @@ function undeclared(file, lang, errors) {
       find: l, replace: `${m[1]}${m[2]}(double) ${m[3]} / ${m[4]};` }, /divi|integer|fraction|truncat|decimal/i, m[3]);
   });
   return found;
+}
+// Numbers joined as text (JavaScript, Java): "Total: " + total + shipping(total) reads left to right, so it prints
+// "Total: 705", not "Total: 75". The models miss it even when asked by name. Flagged only when both sides are certainly
+// numbers: variables that start as a number and are never given text, Java number types, Math.*, .length, and
+// functions whose every return is a number (a few passes, as numbers make more numbers). "Name: " + first + last
+// (text) and anything Max can't prove stay quiet.
+function numbersJoinedAsText(code, lines, java) {
+  const nums = new Set(), numFns = new Set(['parseInt', 'parseFloat', 'Number']), notNums = new Set();
+  // Top-level split of an expression at these operators (not inside brackets or quotes).
+  const split = (x, ops) => {
+    const parts = []; let depth = 0, q = '', start = 0;
+    for (let i = 0; i < x.length; i++) {
+      const ch = x[i];
+      if (q) { if (ch === '\\') i++; else if (ch === q) q = ''; continue; }
+      if ('"\'`'.includes(ch)) q = ch;
+      else if ('([{'.includes(ch)) depth++;
+      else if (')]}'.includes(ch)) depth--;
+      else if (!depth && ops.includes(ch) && i > start) { parts.push(x.slice(start, i)); start = i + 1; }
+    }
+    parts.push(x.slice(start));
+    return parts.map((p) => p.trim());
+  };
+  const isNum = (x) => {
+    x = x.trim();
+    if (/^\(.*\)$/.test(x) && split(x.slice(1, -1), ',').length === 1 && split(x, '+-*/%').length === 1) x = x.slice(1, -1).trim();
+    if (!x) return false;
+    const t = split(x, '?');
+    if (t.length > 1) { const branches = split(x.slice(x.indexOf('?') + 1), ':'); return branches.length === 2 && branches.every(isNum); }
+    const arith = split(x, '+-*/%');
+    if (arith.length > 1) return arith.every((p) => p && isNum(p));
+    if (/^\d+(\.\d+)?$/.test(x)) return true;
+    if (/^[A-Za-z_$][\w$]*$/.test(x)) return nums.has(x) && !notNums.has(x);
+    if (/^[\w$.]+\.(length|size\(\s*\))$/.test(x) || /^Math\.\w+\s*\(.*\)$/.test(x)) return true;
+    const call = /^([A-Za-z_$][\w$]*)\s*\((.*)\)$/.exec(x);
+    return !!call && numFns.has(call[1]);
+  };
+  if (java) {
+    const NUMT = '(?:int|long|short|float|double|byte)';
+    for (const m of code.matchAll(new RegExp(`\\b${NUMT}(?:\\[\\])?\\s+([A-Za-z_]\\w*)\\s*\\(`, 'g'))) numFns.add(m[1]);
+    for (const m of code.matchAll(new RegExp(`\\b${NUMT}\\s+([^;{}()\\n]*)`, 'g'))) for (const part of m[1].split(',')) { const n = /^\s*([A-Za-z_]\w*)\s*(?:=|$)/.exec(part); if (n) nums.add(n[1]); }
+    for (const m of code.matchAll(/\bString\s+([A-Za-z_]\w*)/g)) notNums.add(m[1]);
+  }
+  // JavaScript: from what names are given, and what functions return.
+  const fnBodies = [];
+  for (const m of code.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/g)) {
+    let depth = 1, i = m.index + m[0].length;
+    for (; i < code.length && depth; i++) depth += code[i] === '{' ? 1 : code[i] === '}' ? -1 : 0;
+    fnBodies.push({ name: m[1], body: code.slice(m.index + m[0].length, i - 1) });
+  }
+  for (let pass = 0; pass < 3; pass++) {
+    for (const d of code.matchAll(/\b(?:let|const|var)\s+([^;\n]+)/g)) {
+      for (const part of split(d[1], ',')) {   // "let a = 1, b = 2"
+        const m = /^([A-Za-z_$][\w$]*)\s*=\s*(.+)$/.exec(part);
+        if (!m) continue;
+        if (/^\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(m[2])) { if (isNum(m[2].replace(/^[^=]*=>/, ''))) numFns.add(m[1]); continue; }   // const f = (x) => x * 2
+        (isNum(m[2]) ? nums : /^\s*["'`[{]/.test(m[2]) ? notNums : new Set()).add(m[1]);
+      }
+    }
+    for (const m of code.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*(["'`])/g)) notNums.add(m[1]);   // given text somewhere
+    for (const f of fnBodies) {
+      const rets = [...f.body.matchAll(/\breturn\s+([^;\n]+)/g)].map((r) => r[1]);
+      if (rets.length && rets.every(isNum)) numFns.add(f.name);
+    }
+  }
+  const out = [];
+  lines.forEach((l, i) => {
+    const m = /(["'])((?:\\.|(?!\1)[^\\])*)\1\s*\+\s*([^+;]+?)\s*\+\s*([^+;]+?)(?=\s*(?:\)\s*;|;|\+|,|$))/.exec(l);
+    if (!m || !isNum(m[3]) || !isNum(m[4])) return;
+    const a = m[3].trim(), b = m[4].trim(), was = `${m[1]}${m[2]}${m[1]} + ${a} + ${b}`;
+    out.push({ name: a, line: i + 1, text: l, kind: 'logic', title: 'numbers joined as text',
+      say: `This reads left to right: the text plus \`${a}\` is already text, so \`${b}\` gets stuck on the end as more text (like "Total: 705" instead of "Total: 75"). Put brackets round the sum: \`(${a} + ${b})\`.`,
+      find: l, replace: l.slice(0, m.index) + l.slice(m.index).replace(m[0], `${m[1]}${m[2]}${m[1]} + (${a} + ${b})`), was });
+  });
+  return out;
+}
+// Two classic traps the models walk past, found for certain:
+// - if's without else: "if (score >= 90) grade = 'A';" then "if (score >= 80) grade = 'B';" on the next line: the later
+//   ones overwrite the earlier ones (95 gets a 'C'). Back-to-back one-line ifs setting the same variable from the same
+//   value with thresholds going down (or up for <), the fix adds the else's.
+// - JavaScript's .sort() without a compare function sorts as text ([12, 5, 40] -> [12, 40, 5]); flagged on arrays that
+//   are certainly numbers: a literal of numbers, or a function's parameter that's always given one.
+function classicTraps(code, lines, js) {
+  const out = [];
+  const IF = /^(\s*)(else\s+)?if\s*\(\s*([A-Za-z_]\w*)\s*(>=|>|<=|<)\s*(-?\d+(?:\.\d+)?)\s*\)\s*([A-Za-z_]\w*)\s*=[^=][^;]*;\s*$/;
+  for (let i = 0; i < lines.length; i++) {
+    const run = [];
+    for (let j = i; j < lines.length; j++) {
+      const m = IF.exec(lines[j]);
+      if (!m || (run.length && (m[3] !== run[0].m[3] || m[6] !== run[0].m[6] || m[4][0] !== run[0].m[4][0]))) break;
+      run.push({ j, m });
+    }
+    const down = run.every((r, k) => !k || (run[0].m[4][0] === '>' ? Number(r.m[5]) < Number(run[k - 1].m[5]) : Number(r.m[5]) > Number(run[k - 1].m[5])));
+    if (run.length > 1 && down && run.slice(1).some((r) => !r.m[2])) {
+      const v = run[0].m[6], first = run[0].m;
+      out.push({ name: v, line: run[1].j + 1, text: lines[run[1].j], kind: 'logic', title: 'missing else', said: /else|overwrit|override|chain/i,
+        say: `Each \`if\` runs on its own, so a later one overwrites \`${v}\`: with \`${first[3]}\` at ${Number(first[5]) + (first[4][0] === '>' ? 5 : -5)}, the first one sets it and the next one changes it again. Make them one chain with \`else if\`.`,
+        find: run.map((r) => lines[r.j]).join('\n'), replace: run.map((r, k) => (k && !r.m[2] ? lines[r.j].replace(/^(\s*)if/, '$1else if') : lines[r.j])).join('\n') });
+      i = run[run.length - 1].j;
+    }
+  }
+  if (js) {
+    const numArrays = new Set();
+    for (const m of code.matchAll(/\b(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\[\s*(-?\d+(?:\.\d+)?\s*(?:,\s*-?\d+(?:\.\d+)?\s*)*)\]/g)) numArrays.add(m[1]);
+    // A parameter that every call fills with one of those arrays is one too.
+    for (const f of code.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g)) {
+      const params = f[2].split(',').map((p) => p.trim());
+      const calls = [...code.matchAll(new RegExp(`\\b${f[1]}\\s*\\(([^()]*)\\)`, 'g'))].filter((c) => c.index !== f.index + f[0].indexOf(f[1]));
+      params.forEach((p, k) => { if (p && calls.length && calls.every((c) => numArrays.has(c[1].split(',')[k]?.trim()))) numArrays.add(p); });
+    }
+    lines.forEach((l, i) => {
+      const m = /\b([A-Za-z_$][\w$]*)((?:\.slice\(\s*\)|\.concat\(\s*\))?)\.sort\(\s*\)/.exec(l);
+      if (!m || !numArrays.has(m[1])) return;
+      out.push({ name: m[1], line: i + 1, text: l, kind: 'logic', title: 'sort() sorts numbers as text', said: /sort/i,
+        say: `\`.sort()\` with nothing in the brackets compares the numbers as text, so 12 comes before 5 and 40 before 7. Give it a compare function: \`.sort((a, b) => a - b)\`.`,
+        find: l, replace: l.replace(m[0], `${m[1]}${m[2]}.sort((a, b) => a - b)`) });
+    });
+  }
+  return out;
 }
 // Two answers' errors as one list: the second one's that aren't already there. Same problem = same line (±1) and a
 // similar title ("variable not declared" / "undeclared variable") or the same fix.
@@ -777,8 +902,21 @@ Reply exactly in this shape:
   busy(null);
   if (!answers.some((a) => a?.code)) { task("I couldn't get the fixes just now. Try again, or fix them one by one.", 'bad'); render(); return say("Sorry, that didn't work."); }
   // What a rewrite still left undeclared or without a value gets Max's own line fix (bottom up, so the line numbers hold).
+  // A note's own line fix the rewrite left undone (its lines still there as they were) is made too: rewrites of the whole
+  // file sometimes fix one problem on a line and walk past another.
+  const sq = (s) => String(s).replace(/\s+/g, '');
+  const lineFixes = (f, code) => {
+    let ls = code.split('\n');
+    for (const n of open.filter((x) => S.files[x.fi] === f && x.find && x.replace)) {
+      const want = n.find.split('\n').map(sq), at = ls.findIndex((_, i) => want.every((w, j) => sq(ls[i + j] ?? '') === w));
+      if (at < 0 || sq(ls.join('\n')).includes(sq(n.replace))) continue;
+      const indent = ls[at].match(/^\s*/)[0], rep = n.replace.split('\n'), base = (rep.find((l) => l.trim()) || '').match(/^\s*/)[0];
+      ls = [...ls.slice(0, at), ...rep.map((l) => (l.trim() ? indent + (l.startsWith(base) ? l.slice(base.length) : l.trimStart()) : '')), ...ls.slice(at + want.length)];
+    }
+    return ls.join('\n');
+  };
   const patch = (f, code) => {
-    const ls = tidy(code).split('\n');
+    const ls = lineFixes(f, tidy(code)).split('\n');
     for (const e of undeclared({ name: f.name, code: ls.join('\n') }, S.lang, []).sort((a, b) => b.line - a.line)) ls.splice(e.line - 1, 1, ...e.replace.split('\n'));
     return ls.join('\n');
   };

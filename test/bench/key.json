@@ -21,5 +21,21 @@
  {"file":"primes.py","held":true,"bugs":[]},
  {"file":"reverse.c","held":true,"bugs":[]},
  {"file":"Counter.java","held":true,"bugs":[]},
- {"file":"todo.js","held":true,"bugs":[]}
+ {"file":"todo.js","held":true,"bugs":[]},
+ {"file":"sumto.py","held":true,"bugs":[[3,3,"range stops before n"]],"must":["range\\(1, n \\+ 1\\)|range\\(n \\+ 1\\)|n \\* \\(n \\+ 1\\)"],"mustNot":[]},
+ {"file":"stats.js","held":true,"bugs":[[4,4,"Math.max of an array"],[8,8,"sort() sorts as text"]],"must":["Math\\.max\\(\\.\\.\\.list\\)|Math\\.max\\.apply"],"mustNot":["\\.sort\\(\\)"]},
+ {"file":"Library.java","held":true,"bugs":[[9,9,"get(size()) out of bounds"],[12,12,"== on strings"]],"must":["books\\.size\\(\\) - 1","equals\\("],"mustNot":[]},
+ {"file":"ftoc.c","held":true,"bugs":[[6,6,"whole-number arithmetic"],[7,7,"%d for a float"]],"must":["5\\.0|9\\.0|\\(float\\)|\\(double\\)|32\\.0"],"mustNot":["is %d C"]},
+ {"file":"calc.cpp","held":true,"bugs":[[8,10,"missing break"]],"must":["a \\+ b;\\s*\\n\\s*break;"],"mustNot":[]},
+ {"file":"Grade.cs","held":true,"bugs":[[8,10,"missing else"]],"must":["else if"],"mustNot":[]},
+ {"file":"names.py","held":true,"bugs":[[1,2,"shared default list"]],"must":["names\\s*=\\s*None"],"mustNot":[]},
+ {"file":"score.js","held":true,"bugs":[[10,10,"numbers joined as text"]],"must":[],"mustNot":["\"Score: \" \\+ points \\+ bonus\\)"]},
+ {"file":"people.js","held":true,"bugs":[]},
+ {"file":"search.c","held":true,"bugs":[]},
+ {"file":"Shapes.java","held":true,"bugs":[]},
+ {"file":"wc.py","held":true,"bugs":[]},
+ {"file":"Fib.cs","held":true,"bugs":[]},
+ {"file":"clamp.js","held":true,"bugs":[]},
+ {"file":"mean.cpp","held":true,"bugs":[]},
+ {"file":"bubble.py","held":true,"bugs":[]}
 ]
