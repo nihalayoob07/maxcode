@@ -5,14 +5,16 @@
 'use strict';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-// `name` in Max's text shows as code.
-const rich = (s) => esc(s).replace(/`([^`\n]+)`/g, '<code>$1</code>');
+// `name` in Max's text shows as code; web links can be clicked (they open in your browser: main.js).
+const rich = (s) => esc(s).replace(/`([^`\n]+)`/g, '<code>$1</code>')
+  .replace(/(https:\/\/[^\s<"')]+[^\s<"').,;:!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 
 const SYSTEM = [
   "You are Max's coding tutor and debugger, shown in a code panel in the desktop app. You know every programming language.",
   'Reply with ONE JSON object and nothing else: no markdown fences, no words before or after it. Do not use any tools.',
   'Every "say" is read aloud: one or two complete, friendly sentences in plain spoken English, like a teacher talking (not notes or fragments), under 35 words. Put code names in `backticks`.',
   'Line numbers are 1-based and count the lines of the code exactly as given.',
+  'When asked where to get a tool, give its official page: GCC for Windows https://www.msys2.org (then `pacman -S mingw-w64-ucrt-x86_64-gcc`), C and C++ in VS Code https://code.visualstudio.com/docs/cpp/config-mingw, VS Code https://code.visualstudio.com, Python https://www.python.org/downloads/, Node.js https://nodejs.org, Java https://adoptium.net, .NET for C# https://dotnet.microsoft.com/download. Never make up a link.',
 ].join(' ');
 
 const S = {
@@ -21,7 +23,7 @@ const S = {
   files: [], fi: 0,  // [{ name, path?, code }]
   notes: [], at: 0,  // the steps or errors: [{ fi, line, text, say, simple?, vars?, n?, kind?, title?, find?, replace?, fixed? }]
   simple: false, traced: false,
-  answer: null,      // a reply to a question, shown in place of the current note: { line, say }
+  answer: null,      // a reply to a question, in its own box above the question field: { line, say }
   showFix: false,
   practice: null,    // { question, before, blank, after, hint, answer, result }
   waiting: null,     // what Max just asked: 'practice' | 'fix'
@@ -131,7 +133,6 @@ const current = () => S.notes[S.at];
 const fixable = () => S.notes.filter((n) => !n.fixed).length;   // Fix all fixes them all, with or without a line fix
 
 function noteHTML() {
-  if (S.answer) return `<div class="note"><div class="head">MAX</div>${rich(S.answer.say)}<div class="acts">${btn('Back', 'back', 'p')}</div></div>`;
   const n = current();
   if (!n) return '';
   const last = S.at === S.notes.length - 1;
@@ -169,12 +170,15 @@ function render() {
     const open = S.notes.filter((n) => n.fi === i && !n.fixed).length;
     return `<button data-file="${i}" class="${i === S.fi ? 'on' : ''}">${esc(f.name)}${open ? `<b>${open}</b>` : ''}</button>`;
   }).join('');
+  // An answer to your question: its own box above the question field (it used to replace the note, between the code).
+  $('#answer').hidden = !S.answer;
+  $('#answer').innerHTML = S.answer ? `<div class="note"><div class="head">MAX<button class="x" data-act="back" title="Close" aria-label="Close">×</button></div>${rich(S.answer.say)}</div>` : '';
   if (S.kind === 'practice') return renderPractice();
   if (S.kind === 'menu') return renderMenu();
   const f = S.files[S.fi];
   if (!f) { $('#code').innerHTML = ''; return; }
   const cur = current();
-  const arrow = S.answer ? S.answer.line : cur && cur.fi === S.fi ? cur.line : 0;
+  const arrow = cur && cur.fi === S.fi ? cur.line : 0, asked = S.answer?.line || 0;   // the line an answer is about is marked
   const badges = {};
   if (S.kind === 'debug') for (const n of S.notes) if (n.fi === S.fi) (badges[n.line] ||= []).push(n);
   const fix = S.kind === 'debug' && S.showFix && cur && !cur.fixed ? cur : null;
@@ -184,7 +188,7 @@ function render() {
     // One badge per line (the first open problem, or ✓), "+2" for the rest: three badges ran over the code.
     const list = badges[no] || [], open = list.filter((n) => !n.fixed), first = open[0] || list[0];
     const b = first ? `<b class="${open.length ? '' : 'ok'}">${open.length ? first.n : '✓'}</b>${open.length > 1 ? `<b>+${open.length - 1}</b>` : ''}` : '';
-    const cls = ['ln', on ? 'on' : '', badges[no]?.some((n) => !n.fixed) || fixLines.has(no) ? 'bad' : ''].join(' ');
+    const cls = ['ln', on ? 'on' : '', badges[no]?.some((n) => !n.fixed) || fixLines.has(no) ? 'bad' : '', no === asked ? 'asked' : ''].join(' ');
     return `<div class="${cls}" data-line="${no}"><span class="g">${b}${on ? '▶ ' : ''}${no}</span><span class="tx">${html || ' '}</span></div>`
       + (on ? noteHTML() : '');
   }).join('');
@@ -244,7 +248,7 @@ function say(text) {
   out.resume();
   playId = Math.random().toString(36).slice(2);
   nextAt = 0;
-  window.max.speak(playId, String(text).replace(/`/g, '')).catch(() => {});
+  window.max.speak(playId, String(text).replace(/`/g, '').replace(/https?:\/\/\S+/g, 'the link on screen')).catch(() => {});
 }
 window.max.onTts((d) => {
   if (d.id !== playId) return;
@@ -987,8 +991,7 @@ Reply exactly in this shape:
 {"say":"your answer, at most three short sentences","line":4,"text":"the exact text of the line your answer is about, or empty"}`, 'Max is thinking');
   if (!r) return;
   if (S.kind === 'practice') { task(`${S.practice.question}\n${r.say}`, '', 'PRACTICE'); return say(String(r.say || '')); }
-  S.answer = { line: code ? locate(code, r.line || n?.line || 1, r.text) : 0, say: String(r.say || '') };
-  if (!code) task(S.answer.say);
+  S.answer = { line: code && r.text ? locate(code, r.line || n?.line || 1, r.text) : 0, say: String(r.say || '') };
   render();
   say(S.answer.say);
 }

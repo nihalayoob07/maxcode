@@ -207,3 +207,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .dropbox textarea:focus { border-color: var(--blue-text); }
 .dropbox .acts { margin-top: 0; }
+/* An answer to a question (tutor.js render): its own box above the question field, never between the code. */
+.answer { flex: none; max-height: 42%; overflow: auto; border-top: 1px solid var(--line); }
+.answer .note { margin: 10px 12px; }
+.answer .head { display: flex; align-items: center; justify-content: space-between; }
+.answer .x { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; padding: 0 2px; cursor: pointer; }
+.answer a, .run a { color: var(--blue-text); }
+.ln.asked { background: var(--hl); }
