@@ -291,6 +291,13 @@ ipcMain.handle('course', (_e, lang, data) => {
 const TCC = path.join(__dirname, 'assets', 'tcc', 'tcc.exe').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
 const MSYS = 'C:\\msys64\\ucrt64\\bin';
 const gpp = () => (fs.existsSync(`${MSYS}\\g++.exe`) ? `${MSYS}\\g++.exe` : 'g++');
+// javac from PATH, else JAVA_HOME or the usual JDK folders (a JDK installed while Max runs isn't on his PATH yet).
+const javac = () => {
+  const roots = ['C:\\Program Files\\Eclipse Adoptium', 'C:\\Program Files\\Java', 'C:\\Program Files\\Microsoft'];
+  const found = [process.env.JAVA_HOME, ...roots.flatMap((r) => { try { return fs.readdirSync(r).map((d) => path.join(r, d)); } catch { return []; } })]
+    .filter(Boolean).map((d) => path.join(d, 'bin', 'javac.exe')).find((f) => fs.existsSync(f));
+  return found || 'javac';
+};
 const gppEnv = () => (fs.existsSync(`${MSYS}\\g++.exe`) ? { PATH: `${MSYS};${process.env.PATH}` } : {});   // its own DLLs and cc1plus
 const CHECKERS = {
   javascript: { tool: 'Node', ext: '.js', each: (f) => [process.execPath, ['--check', f], { ELECTRON_RUN_AS_NODE: '1' }] },
@@ -298,7 +305,7 @@ const CHECKERS = {
   c: { tool: 'TinyCC', ext: '.c', also: ['.h'], each: (f, dir) => [TCC, ['-c', f, '-o', `${f}.o`, '-I', dir], {}] },
   // C++ only where the PC has g++ (on PATH, or MSYS2's usual place: a PATH change reaches Max at his next start).
   'c++': { tool: 'g++', ext: '.cpp', also: ['.h', '.hpp'], each: (f, dir) => [gpp(), ['-fsyntax-only', '-I', dir, f], gppEnv()] },
-  java: { tool: 'javac', ext: '.java', all: (fs_, dir) => ['javac', ['-d', dir, '-encoding', 'utf8', ...fs_], {}] },
+  java: { tool: 'javac', ext: '.java', all: (fs_, dir) => [javac(), ['-d', dir, '-encoding', 'utf8', ...fs_], {}] },
 };
 const run = (cmd, args, env, cwd) => new Promise((ok) => require('child_process').execFile(cmd, args,
   { cwd, env: { ...process.env, ...env }, timeout: 8000, windowsHide: true, maxBuffer: 4e6 }, (err, stdout, stderr) => ok({ err, out: `${stdout}\n${stderr}` })));
@@ -309,7 +316,9 @@ ipcMain.handle('compileCheck', async (_e, files, lang) => {
   try {
     // Each file by its own name (Java needs it), or a made-up one for code read off the screen.
     const keepName = (n) => /^[\w.-]+$/.test(n) && [c.ext, ...(c.also || [])].some((x) => n.endsWith(x));   // headers keep theirs
-    const named = files.map((f, i) => ({ ...f, disk: path.join(dir, keepName(f.name) ? f.name : `code${i}${c.ext}`) }));
+    // Java wants a public class in a file of its name: code read off the screen is named after its class.
+    const cls = (f) => c.ext === '.java' && (/\bpublic\s+(?:final\s+|abstract\s+)?(?:class|interface|enum|record)\s+([A-Za-z_]\w*)/.exec(f.code) || [])[1];
+    const named = files.map((f, i) => ({ ...f, disk: path.join(dir, keepName(f.name) ? f.name : cls(f) ? `${cls(f)}.java` : `code${i}${c.ext}`) }));
     for (const f of named) fs.writeFileSync(f.disk, f.code);
     const back = (s) => named.find((f) => s && path.basename(f.disk) === path.basename(s))?.name || named[0].name;
     const errors = [];
