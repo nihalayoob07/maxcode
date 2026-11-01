@@ -513,7 +513,10 @@ Check each of these separately, line by line, and report every one that fails:
 3. Every variable is GIVEN A VALUE before its value is read. This is a different error from 2.
 4. Types match: format specifiers, function arguments, return values. Every call passes as many arguments as the function's declaration takes (check across all the files).
 5. Nothing crashes or never ends: out-of-bounds, null, division by zero, infinite loops.
-6. Every buffer is big enough for what is copied into it (strcpy, strcat, sprintf, array sizes), counting the '\\0' at the end of strings.`;
+6. Every buffer is big enough for what is copied into it (strcpy, strcat, sprintf, array sizes), counting the '\\0' at the end of strings.
+7. Every function whose result is used (printed, stored, compared) actually returns it, on every path. A missing return gives None, undefined or garbage.
+8. Every loop ends: something in it moves the loop variable towards the stop condition.
+9. The arithmetic gives what the names and printed text say. Two traps to check every time: in C, C++, Java and C#, int / int drops the fraction even when the result goes into a double or float (an average of 87.25 comes out 87.0); in JavaScript and Java, "Total: " + a + b joins a and b as text ("Total: 55" for 5 and 5) unless the sum is in brackets.`;
   const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code.replace(/\t/g, '    '))}`).join('\n\n')}`;   // no tabs for Max to copy into his JSON
   const SHAPE = `Reply exactly in this shape:
 {"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
@@ -526,12 +529,27 @@ A fix ("replace") is the smallest change that makes the program correct and do w
   // Asked twice at once and the two lists combined: one answer alone sometimes misses a bug (an undeclared variable,
   // say) that the other catches. Both take ~3 s, so it's no slower.
   const prompt = `Debug this code. ${RULES}\n${code}\n${SHAPE}`;
-  const second = window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }], 'big')
+  // The second look is a different reviewer: only what the program does when it runs. The same question twice tended
+  // to miss the same logic bugs (an int average, numbers joined as text).
+  const logic = `Debug this code. Someone else checks that it compiles. You check only what it DOES when it runs, by tracing it in your head with its real values: wrong results, values used before they are set, functions that don't return what is used, loops that never end, out-of-bounds, wrong arithmetic. ${RULES.split('\n').slice(1).join('\n')}\n${code}\n${SHAPE}`;
+  const second = window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: logic }], 'big')
     .then(parseJSON).catch(() => null);
-  const r = await askMax(prompt, `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`, 'big');
+  const first = askMax(prompt, `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`, 'big');
+  // Whichever answer arrives first is used, and the other gets 4 s more at most: NVIDIA sometimes queues one request
+  // for a minute.
+  let fromSecond = false;
+  const r = await new Promise((done) => {
+    let waiting = 2, got = false;
+    const take = (x, isSecond) => {
+      if (got) return;
+      if (x && typeof x === 'object') { got = true; fromSecond = isSecond; done(x); } else if (!--waiting) done(null);
+    };
+    first.then((x) => take(x, false)); second.then((x) => take(x, true));
+  });
   if (!r) { if (S.onScreen) window.max.mode('panel'); return; }   // the error shows in the panel
-  // The second answer gets 4 s more at most: NVIDIA sometimes queues one request for a minute.
-  r.errors = mergeErrors(r.errors || [], (await Promise.race([second, new Promise((ok) => setTimeout(ok, 4000))]))?.errors || []);
+  const late = await Promise.race([fromSecond ? first : second, new Promise((ok) => setTimeout(ok, fromSecond ? 6000 : 4000))]);
+  if (fromSecond) cancelAsk();   // done with it (and its spinner) either way
+  r.errors = mergeErrors(r.errors || [], late?.errors || []);
   r.errors = mergeErrors(r.errors, S.files.flatMap((f) => undeclared(f, r.lang || S.lang, r.errors)));
   const unsaved = dirty ? ` (${files[0].name} has unsaved changes in ${editor || 'your editor'}: I read the saved version.)` : '';
   S.lang ||= String(r.lang || '');
@@ -544,11 +562,14 @@ A fix ("replace") is the smallest change that makes the program correct and do w
     render();
     if (S.onScreen) {
       window.max.mode('pet');
-      if (S.notes.length) screenNote();
-      else window.max.screenNote({ line: 1, n: 0, total: 0, kind: 'all clear', title: '', say: 'No problems found. Your code looks right.', fix: '', fixed: true });
+      if (!S.notes.length) window.max.screenNote({ line: 1, n: 0, total: 0, kind: 'all clear', title: '', say: 'No problems found. Your code looks right.', fix: '', fixed: true });
+      else if (!quick) screenNote();
     }
   };
+  // "Just fix it" (Settings): no walking through the bugs, they're all fixed at once and written to the bug log.
+  const quick = (await window.max.prefs()).debug === 'fix';
   show(r);
+  if (quick && S.notes.length) return fixAll(true);
   say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}` : "I couldn't find any problems in it.");
 }
 // The classic beginner bug the models sometimes skip, found in code for C, C++, Java and C#: a variable assigned at the
@@ -602,7 +623,7 @@ function undeclared(file, lang, errors) {
       const use = new RegExp(`(?<![\\w.>])${name}\\b(\\s*=(?!=))?`);   // not s.name or s->name (a field)
       for (const later of lines.slice(i + 1)) {
         if (new RegExp(`\\b(?:int|float|double|long|char)\\b[^;=]*\\b${name}\\b`).test(later)) return false;   // declared again
-        if (new RegExp(`&\\s*${name}\\b`).test(later)) return false;   // read in with scanf
+        if (new RegExp(`&\\s*${name}\\b|\\bscanf\\s*\\(.*\\b${name}\\b`).test(later)) return false;   // read in with scanf (a missing & is its own bug)
         const m = use.exec(later);
         if (m) return !m[1] || new RegExp(`\\b${name}\\b`).test(later.slice(m.index + m[0].length).split(';')[0]);   // first use reads it, or "x = x + 1"
       }
@@ -615,6 +636,24 @@ function undeclared(file, lang, errors) {
     report({ file: file.name, line: i + 1, text: l, kind: 'runtime', title: 'variable has no value',
       say: `${names2} ${empty.length > 1 ? 'are' : 'is'} declared but never given a value, so the program works with whatever garbage is in memory. Give ${empty.length > 1 ? 'them values' : 'it a value'} before using ${empty.length > 1 ? 'them' : 'it'}.`,
       find: l, replace: [`${d[1]}${l.trim().replace(/;?\s*$/, ';')}`, ...empty.map((n) => `${d[1]}${n} = ${value(n)};`)].join('\n') }, /value|initiali|garbage|uninit|before|set/i, empty[0]);
+  });
+  // Whole-number division where a decimal is wanted: "return sum / n;" in a function that returns a double or float, or
+  // "double avg = sum / n;", with both sides whole numbers (int variables, plain numbers, .length / .size() / .Count).
+  // The models miss this one even when asked about it by name.
+  const ints = new Set();
+  for (const m of code.matchAll(/\b(?:int|long|short|unsigned|size_t)\b[ \t]+([^;{}()\n]*)/g)) for (const part of m[1].split(',')) { const n = /^\s*([A-Za-z_]\w*)/.exec(part); if (n) ints.add(n[1]); }
+  for (const m of code.matchAll(/\(\s*(?:const\s+)?(?:int|long|short)\s+([A-Za-z_]\w*)|,\s*(?:const\s+)?(?:int|long|short)\s+([A-Za-z_]\w*)/g)) ints.add(m[1] || m[2]);
+  const whole = (x) => /^\d+$/.test(x) || ints.has(x) || /^[A-Za-z_]\w*\s*(?:\.\s*(?:length|Length|Count)|\.\s*size\s*\(\s*\)|->\s*\w+_count)$/.test(x) || /^\(\s*int\s*\)/.test(x);
+  const OPERAND = '([A-Za-z_]\\w*(?:\\s*\\.\\s*(?:length|Length|Count|size\\s*\\(\\s*\\)))?|\\d+)';
+  let fn = '';
+  lines.forEach((l, i) => {
+    const sig = /^\s*(?:(?:public|private|protected|static|inline|const|virtual|final)\s+)*([A-Za-z_][\w<>]*)\s+[A-Za-z_]\w*\s*\([^;]*\)\s*\{?\s*$/.exec(l);
+    if (sig && !/^(if|for|while|switch|return|else)$/.test(sig[1])) fn = sig[1];
+    const m = new RegExp(`^(\\s*)(return\\s+|(?:double|float)\\s+[A-Za-z_]\\w*\\s*=\\s*)${OPERAND}\\s*/\\s*${OPERAND}\\s*;\\s*$`).exec(l);
+    if (!m || !whole(m[3]) || !whole(m[4]) || (m[2].startsWith('return') && !/^(double|float)$/.test(fn))) return;
+    report({ file: file.name, line: i + 1, text: l, kind: 'logic', title: 'integer division',
+      say: `\`${m[3]} / ${m[4]}\` divides two whole numbers, so the fraction is thrown away (87.25 comes out as 87.0) even though the result is a decimal. Turn one of them into a double first.`,
+      find: l, replace: `${m[1]}${m[2]}(double) ${m[3]} / ${m[4]};` }, /divi|integer|fraction|truncat|decimal/i, m[3]);
   });
   return found;
 }
@@ -671,6 +710,7 @@ async function applyFix() {
     else f.code = f.code.replace(n.find, () => n.replace);
   } catch (e) { return fixFailed(e); }
   S.showFix = false; setWaiting(null);
+  logFixes(f, [{ ...n, before: n.find, after: n.replace }]);
   fixedNote(n, f);
   render();
   if (S.onScreen) screenNote();
@@ -695,7 +735,7 @@ function fixedNote(n, f) {
 // Fix all: Max rewrites each file with every open problem fixed together, and the file is replaced (on screen: one
 // paste, one Ctrl+Z undoes it all). Applying the line fixes one by one clashed: two fixes for one line (a ; and a
 // declaration), or two fixes declaring the same variable on different lines.
-async function fixAll() {
+async function fixAll(quick = false) {
   const open = S.notes.filter((n) => !n.fixed);
   if (!open.length) return say('Everything is fixed already.');
   S.showFix = false; setWaiting(null);
@@ -729,14 +769,26 @@ Reply exactly in this shape:
       if (S.onScreen) await window.max.typeFix({ line: 1, find: f.code.replace(/\n+$/, ''), replace: fixed, code: f.code });
       if (f.path) { f.code = await window.max.tutorSave({ file: f.path, find: f.code, replace }); saved.push(f.name); }
       else f.code = replace;
-      for (const n of open) if (S.files[n.fi] === f) { n.fixed = true; n.line = locate(f.code, n.line, n.find ? n.replace.split('\n')[0] : n.text); }
+      const mine = open.filter((n) => S.files[n.fi] === f), lines = f.code.split('\n');
+      for (const n of mine) { n.fixed = true; n.line = locate(f.code, n.line, n.find ? n.replace.split('\n')[0] : n.text); }
+      logFixes(f, mine.map((n) => ({ ...n, before: n.text || n.find, after: lines[n.line - 1] ?? '' })));
     }
   } catch (e) { return fixFailed(e); }
-  const left = S.notes.filter((x) => !x.fixed).length;
-  task(left ? `${left} problem${left > 1 ? 's' : ''} left.` : 'All fixed.', left ? 'bad' : '', left ? 'DEBUG' : 'FIXED');
+  const left = S.notes.filter((x) => !x.fixed).length, done = S.notes.length - left;
+  const list = S.notes.filter((x) => x.fixed).map((x) => x.title || x.kind).filter((t, i, a) => t && a.indexOf(t) === i);
+  task(left ? `${left} problem${left > 1 ? 's' : ''} left.` : `Fixed ${done}: ${list.join(', ')}. Every fix is in the bug log.`, left ? 'bad' : '', left ? 'DEBUG' : 'FIXED');
   render();
-  if (S.onScreen) screenNote();
-  say(`Fixed ${S.notes.length - left} of ${S.notes.length}${saved.length ? `, saved to ${saved.join(', ')}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} left.` : ''}`);
+  if (S.onScreen) {
+    if (quick && !left) window.max.screenNote({ line: S.notes[0].line, n: 0, total: 0, done, kind: 'fixed', title: '', say: `${list.join(', ')}.`, fix: '', fixed: true, code: S.files[S.notes[0].fi]?.code });
+    else screenNote();
+  }
+  say(`Fixed ${done} of ${S.notes.length}${saved.length ? `, saved to ${saved.join(', ')}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} left.` : ''}`);
+}
+// Every fix that lands goes to the bug log (main.js): where, what was wrong, and the line before and after.
+function logFixes(f, notes) {
+  if (!notes.length) return;
+  window.max.bugLog({ file: f.name, path: f.path || '', lang: S.lang, onScreen: S.onScreen,
+    fixes: notes.map((n) => ({ line: n.line, kind: n.kind, title: n.title, say: n.say, before: String(n.before ?? '').trim(), after: String(n.after ?? '').trim() })) }).catch(() => {});
 }
 
 /* ---------- Questions ---------- */

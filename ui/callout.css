@@ -26,3 +26,4 @@ p { margin: 6px 0; }
 .acts .btn { padding: 2px 10px; }
 #count { color: var(--muted); font-size: 12px; min-width: 34px; text-align: center; }
 .sp { flex: 1; }
+p code { font: 12.5px var(--mono); color: var(--text); }

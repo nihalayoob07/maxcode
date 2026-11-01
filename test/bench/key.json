@@ -1,0 +1,15 @@
+[
+ {"file":"avg.py","bugs":[[3,3,"range +1 out of range"],[9,9,"str + float"]],"must":[],"mustNot":["len\\(nums\\) \\+ 1","\"Average score: \" \\+ result\\)"]},
+ {"file":"count.py","bugs":[[1,5,"no return"],[7,9,"infinite loop"]],"must":["return count","n -= 1|n = n - 1"],"mustNot":[]},
+ {"file":"cart.js","bugs":[[9,10,"<= off by one"],[16,16,"= in if"],[23,23,"string concat of numbers"]],"must":[],"mustNot":["<= list\\.length","\\(total = 0\\)","\"Total: \" \\+ total \\+ shipping\\(total\\)"]},
+ {"file":"Grades.java","bugs":[[7,7,"integer division"],[18,18,"missing ;"],[20,20,"== on strings"]],"must":["average\\(marks\\);","equals\\("],"mustNot":["return sum / marks\\.length;"]},
+ {"file":"swap.c","bugs":[[3,8,"swap by value"],[14,14,"scanf without &"]],"must":["&x","int ?\\* ?a"],"mustNot":[]},
+ {"file":"sum.c","bugs":[[4,4,"missing ; / no values"],[5,5,"sum undeclared / ;"],[6,6,"%c for int"]],"must":["int[^;]*\\bsum\\b|,\\s*sum\\b","%d"],"mustNot":["%c"]},
+ {"file":"vec.cpp","bugs":[[7,7,"sum uninitialised"],[8,9,"<= size"],[14,20,"missing return"]],"must":["sum ?= ?0|sum ?\\{ ?0 ?\\}|sum\\(0\\)","return false"],"mustNot":["<= v\\.size"]},
+ {"file":"login.js","bugs":[[11,11,"logn typo"]],"must":[],"mustNot":["logn\\("]},
+ {"file":"fizz.py","bugs":[]},
+ {"file":"words.js","bugs":[]},
+ {"file":"Stack.java","bugs":[]},
+ {"file":"max.c","bugs":[]},
+ {"file":"temp.py","bugs":[]}
+]

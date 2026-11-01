@@ -29,7 +29,14 @@
         <button class="card" data-go="explain"><b>Explain code</b><span>Walk through a program line by line</span></button>
         <button class="card" data-go="courses"><b>Courses</b><span>Learn a language lesson by lesson</span></button>
       </div>
-      <a href="#" class="small" id="toSettings">Settings</a>
+      <a href="#" class="small" id="toSettings">Settings</a> <a href="#" class="small" id="toLog">Bug log</a>
+    </div>
+    <div class="homebox" id="logBox" hidden>
+      <a href="#" class="small back" id="logBack">← Back</a>
+      <h1>Bug log</h1>
+      <p>Every fix Max made, newest first.</p>
+      <div class="log" id="log"></div>
+      <a href="#" class="small" id="logClear">Clear the log</a>
     </div>
     <div class="homebox" id="courseBox" hidden>
       <a href="#" class="small back" id="coursesBack">← Back</a>
@@ -42,7 +49,7 @@
 
   function home() {
     $('#start').hidden = false;
-    $('#courseBox').hidden = true;
+    $('#courseBox').hidden = $('#logBox').hidden = true;
     $('#home').hidden = false;
     $('#askHome').focus();
   }
@@ -73,6 +80,32 @@
     for (const b of $('#courses').children) b.hidden = q ? !b.firstChild.textContent.toLowerCase().includes(q) : !b.dataset.common;
   }
   $('#courseFilter').addEventListener('input', filter);
+
+  // The bug log: each debug run's fixes, with the line before and after (main.js keeps it).
+  async function showLog() {
+    const log = await window.max.bugLog();
+    const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls, textContent: text ?? '' });
+    const when = (t) => new Date(t).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    $('#log').replaceChildren(...(log.length ? log.map((run) => {
+      const box = el('div', 'run');
+      box.append(el('h2', '', `${run.file}${run.lang ? ` · ${run.lang}` : ''} · ${when(run.time)} · ${run.fixes.length} fix${run.fixes.length > 1 ? 'es' : ''}`));
+      for (const f of run.fixes) {
+        const diff = el('div', 'diff');
+        if (f.before) diff.append(el('div', 'del', `- ${f.before}`));
+        if (f.after) diff.append(el('div', 'add', `+ ${f.after}`));
+        const say = el('p', '');
+        say.innerHTML = rich(f.say);   // tutor.js: escaped, `name` as code
+        box.append(el('b', '', `Line ${f.line} · ${f.title || f.kind}`), say, diff);
+      }
+      return box;
+    }) : [el('p', '', 'Nothing yet. Fixes Max makes show up here.')]));
+    $('#start').hidden = $('#courseBox').hidden = true;
+    $('#logBox').hidden = false;
+    $('#home').hidden = false;
+  }
+  $('#toLog').onclick = (e) => { e.preventDefault(); showLog(); };
+  $('#logBack').onclick = (e) => { e.preventDefault(); home(); };
+  $('#logClear').onclick = async (e) => { e.preventDefault(); await window.max.bugLog('clear'); showLog(); };
   $('#coursesBack').onclick = (e) => { e.preventDefault(); home(); };
 
   async function go(what) {
@@ -121,7 +154,11 @@
 
   // Opening the panel, or closing Settings (the key may have just been added), refreshes the menu.
   const refresh = () => { if (!$('#home').hidden) home(); };
-  window.max.onTutor((job) => (job.kind === 'screen' ? go('editor') : leave()));   // a spoken request (main.js)
+  window.max.onTutor((job) => {   // a spoken request (main.js), or the callout's Bug log button
+    if (job.kind === 'screen') return go('editor');
+    if (job.cmd === 'log') { window.max.mode('panel'); return showLog(); }
+    leave();
+  });
   window.max.onMode((m) => { if (m === 'panel') refresh(); });
   window.max.onKeyChanged(refresh);
 

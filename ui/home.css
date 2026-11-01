@@ -41,3 +41,11 @@
   .home .card:hover b { text-decoration: none; }
 }
 .home input:focus-visible { outline: none; }   /* the underline/border already shows focus */
+/* The bug log (home.js showLog) */
+.home .run { margin-bottom: 20px; }
+.home .run h2 { margin: 18px 0 8px; letter-spacing: 0.06em; text-transform: none; font-size: 12.5px; }
+.home .run b { display: block; margin-top: 10px; font-size: 14px; font-weight: 600; }
+.home .run p { margin: 2px 0 0; font-size: 13.5px; }
+.home .run .diff { margin-top: 6px; }
+.home #toLog { margin-left: 16px; }
+.home .run p code { font: 12.5px var(--mono); color: var(--text); }

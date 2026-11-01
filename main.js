@@ -16,6 +16,7 @@ const VOICE_KEY_FILE = () => path.join(app.getPath('userData'), 'voice-key.bin')
 const PLUS_KEY_FILE = () => path.join(app.getPath('userData'), 'plus-key.bin');   // a Max Plus licence (Lemon Squeezy)
 const COURSES = () => path.join(app.getPath('userData'), 'courses.json');
 const PREFS = () => path.join(app.getPath('userData'), 'prefs.json');
+const BUGLOG = () => path.join(app.getPath('userData'), 'buglog.json');
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; } };
 // A random id for this install, made on first run: what the server counts the daily allowance against.
 let install = '';
@@ -283,6 +284,15 @@ ipcMain.handle('course', (_e, lang, data) => {
   if (data !== undefined) { all[lang] = data; fs.writeFileSync(COURSES(), JSON.stringify(all)); }
   return all[lang] || null;
 });
+// The bug log: every fix Max made (newest first, the last 200 debug runs), so "just fix it" can be checked later.
+// add: one run's entry to add, 'clear' to empty it, nothing to read it.
+ipcMain.handle('bugLog', (_e, add) => {
+  let log = [].concat(readJSON(BUGLOG())).filter((x) => x && x.time);
+  if (add === 'clear') log = [];
+  else if (add) log = [{ ...add, time: Date.now() }, ...log].slice(0, 200);
+  if (add) fs.writeFileSync(BUGLOG(), JSON.stringify(log));
+  return log;
+});
 ipcMain.handle('tutorSave', (_e, fix) => tutorCode.applyFix(fix));
 ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 
@@ -294,7 +304,7 @@ ipcMain.handle('tutorRead', (_e, p) => tutorCode.readDropped(String(p || '')));
 const HIDE = { width: 48, height: 46 }, PET = { width: 120, height: 130 }, PANEL = { width: 440, height: 640 };
 const HAND_FOR = 2 * 60 * 1000;
 let win = null, settings = null, tray = null, mode = 'hide';
-let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', talk: 'Control+Alt+T', wake: true, level: 'beginner' };   // theme: system | light (Paper) | dark (Frost)
+let prefs = { onTop: true, theme: 'system', call: 'Control+Alt+M', talk: 'Control+Alt+T', wake: true, level: 'beginner', debug: 'teach' };   // theme: system | light (Paper) | dark (Frost); debug: teach (each bug, one by one) | fix (just fix them all)
 
 let saveTimer = null;
 function savePrefs() {
@@ -380,12 +390,13 @@ setInterval(() => {
 ipcMain.on('quit', () => app.quit());
 
 // ---------- Settings ----------
-ipcMain.handle('prefs', () => ({ bound, wake: prefs.wake, talk: prefs.talk, level: prefs.level, call: prefs.call, theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
+ipcMain.handle('prefs', () => ({ bound, wake: prefs.wake, talk: prefs.talk, level: prefs.level, debug: prefs.debug, call: prefs.call, theme: prefs.theme, onTop: prefs.onTop, login: app.getLoginItemSettings().openAtLogin }));
 ipcMain.handle('setPref', (_e, name, on) => {
   if (name === 'onTop') { prefs.onTop = !!on; win.setAlwaysOnTop(prefs.onTop); savePrefs(); }
   if (name === 'login') app.setLoginItemSettings({ openAtLogin: !!on });
   if (name === 'theme' && ['system', 'light', 'dark'].includes(on)) { prefs.theme = on; nativeTheme.themeSource = on; savePrefs(); }
   if (name === 'level' && LEVELS[on]) { prefs.level = on; savePrefs(); }
+  if (name === 'debug' && ['teach', 'fix'].includes(on)) { prefs.debug = on; savePrefs(); }
   if (name === 'wake') { prefs.wake = !!on; savePrefs(); win.webContents.send('wakePref', prefs.wake); }
   if (name === 'call' || name === 'talk') {
     const other = name === 'call' ? prefs.talk : prefs.call;
@@ -640,7 +651,15 @@ async function track() {
   tracking = true;
   try {
     const { display, img } = await capture({ hide: false, display: screenMap.display });
-    const k = display.size.width / img.getSize().width, m = findCode(await ocr(img), display, k, codeNow);
+    const k = display.size.width / img.getSize().width, { width: W, height: H } = img.getSize();
+    // Around where the code was first (a quarter of the reading, so the note keeps up with scrolling), the whole
+    // screen only if it went further.
+    const was = screenMap.m, top = was.lineY(0), bottom = was.lineY(codeNow.split('\n').length);
+    const r = { x: Math.max(0, Math.round(was.x0 - 300)), y: Math.max(0, Math.round(top - 300)) };
+    Object.assign(r, { width: Math.min(W - r.x, Math.round(was.x1 - was.x0 + 600)), height: Math.min(H - r.y, Math.round(bottom - top + 600)) });
+    const near = r.width > 50 && r.height > 50 && Number.isFinite(top)
+      ? (await ocr(img.crop(r))).map((o) => ({ ...o, x0: o.x0 + r.x, x1: o.x1 + r.x, y0: o.y0 + r.y, y1: o.y1 + r.y })) : [];
+    const m = findCode(near, display, k, codeNow) || findCode(await ocr(img), display, k, codeNow);
     if (typing || !callout || callout.isDestroyed()) return;
     if (!m) { callout.hide(); return; }   // scrolled away, another tab, minimised: back when the code is
     screenMap = { m, k, display };
@@ -775,6 +794,10 @@ async function open() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
+  // A reloaded page starts as the hand: tell it what the window is now (a panel-sized window drawn as a hand showed a
+  // giant hand on screen). A crashed page is reloaded.
+  win.webContents.on('did-finish-load', () => { if (mode !== 'hide') win.webContents.send('mode', mode); });
+  win.webContents.on('render-process-gone', () => { if (!win.isDestroyed()) win.reload(); });
   win.once('ready-to-show', () => {
     win.show();
     // First run: Max sits on screen so you meet him (nothing to set up: the server answers until you add keys).

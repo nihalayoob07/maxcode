@@ -54,5 +54,6 @@ contextBridge.exposeInMainWorld('max', {
   prefs: () => ipcRenderer.invoke('prefs'),
   setPref: (name, on) => ipcRenderer.invoke('setPref', name, on),
   courses: () => ipcRenderer.invoke('courses'),
+  bugLog: (add) => ipcRenderer.invoke('bugLog', add),
   quit: () => ipcRenderer.send('quit'),
 });

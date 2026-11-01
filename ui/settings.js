@@ -158,7 +158,9 @@
     $('#login').checked = p.login;
     $('#theme').value = p.theme;
     $('#level').value = p.level;
+    $('#debugMode').value = p.debug;
   })();
+  $('#debugMode').onchange = (e) => window.max.setPref('debug', e.target.value);
   $('#onTop').onchange = (e) => window.max.setPref('onTop', e.target.checked);
   $('#login').onchange = (e) => window.max.setPref('login', e.target.checked);
   $('#theme').onchange = (e) => window.max.setPref('theme', e.target.value);

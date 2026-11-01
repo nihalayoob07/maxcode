@@ -7,7 +7,11 @@ Max hides under the bottom of your screen with just a raised hand peeking out fo
 He dresses for the time of day: pyjamas and a nightcap at night (with zzz after midnight), droopy eyes, yawns and coffee early in the morning, sneaky bites of a sandwich at lunch, a backwards cap at weekends, and a witch hat and pumpkin for Halloween, a Santa hat at Christmas and a party hat at New Year. He jumps and sparkles when a bug gets fixed or you get a practice answer right. The schedule is in `ui/costume.js` (`node ui/costume.js` checks it). He looks at his laptop while he's thinking.
 
 - **Debug my code**: finds the code on your screen in any app (an editor, a browser, a slide, a PDF), points at it and asks "Is this the code?" (or lets you drag a box around it), then shows each bug right there: a note beside the line with an arrow at it, and **Apply fix** types the fix into your editor (Ctrl+Z undoes it). Works in any app you can type in.
+  The note follows the code if you scroll or move the window. **Fix all** fixes every bug at once (one Ctrl+Z undoes it).
+- **Just fix it** (Settings → When I debug): no walking through bugs; Max fixes everything and the **Bug log** (home screen) keeps each fix, with the line before and after.
 - **Debug a file / Explain code**: drop a file or paste a program.
+- **Your level** (Settings): Beginner, Intermediate or Expert; every explanation is pitched for it.
+- Tests: `npm test` (Max's own code checks, no AI), `npm run bench` (13 programs in 5 languages scored against the AI; see `test/bench/bench.mjs`).
 - **Ask anything**: "how do pointers work in C" gives a lesson with an example you can step through.
 - **Courses** (in his panel): the common languages up front, and 43 in all (Rust, Haskell, COBOL, Assembly…) through the search box. Progress is saved on the PC.
 - **Talk to him**: say "Max" ("Max, teach me Rust"), press **Ctrl+Alt+T**, or click the mic. Listening runs on your PC with a small speech model that downloads itself the first time; no key needed. He answers out loud: about a minute a day free, more with your own ElevenLabs key or Max Plus.
