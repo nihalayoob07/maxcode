@@ -570,7 +570,8 @@ A fix ("replace") is the smallest change that makes the program correct and do w
   // A compiler error nobody reported still gets a note (Fix all fixes it with the rest).
   for (const e of checked?.errors || []) {
     // Compilers name the line after a missing ; (or a few after, past blank lines): a note up to 3 lines above covers it.
-    if (r.errors.some((x) => (x.file || S.files[0].name) === e.file && parseInt(x.line, 10) >= e.line - 3 && parseInt(x.line, 10) <= e.line + 1)) continue;
+    // One file: whatever Max calls it ("main.c" for code read off the screen) is that file.
+    if (r.errors.some((x) => (S.files.length < 2 || (x.file || S.files[0].name) === e.file) && parseInt(x.line, 10) >= e.line - 3 && parseInt(x.line, 10) <= e.line + 1)) continue;
     const f = S.files.find((x) => x.name === e.file) || S.files[0];
     r.errors.push({ file: f.name, line: e.line, text: f.code.split('\n')[e.line - 1] || '', kind: 'syntax', title: 'does not compile', say: `${checked.tool} says: ${e.msg}`, find: '', replace: '' });
   }
@@ -861,6 +862,7 @@ async function applyFix() {
   render();
   if (S.onScreen) screenNote();
   const left = S.notes.filter((x) => !x.fixed).length;
+  if (!left) task(`All ${S.notes.length} fixed. Every fix is in the bug log.`, '', 'FIXED');
   say(`Done${f.path ? `, saved to ${f.name}` : S.onScreen ? '. Ctrl Z in your editor undoes it' : ''}.${left ? ` ${left} to go.` : ' That was the last one.'}`);
 }
 function fixFailed(e) {

@@ -473,7 +473,12 @@ function bindKeys({ call, talk } = prefs) {
 function powershell(script, env, ms = 20000) {
   return new Promise((resolve, reject) => require('child_process').execFile('powershell.exe',
     ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-    { env: { ...process.env, ...env }, timeout: ms, windowsHide: true, maxBuffer: 8e6 }, (err, stdout) => (err ? reject(err) : resolve(stdout))));
+    { env: { ...process.env, ...env }, timeout: ms, windowsHide: true, maxBuffer: 8e6 }, (err, stdout, stderr) => {
+      if (!err) return resolve(stdout);
+      // A short reason, never the encoded command (it once filled a note on screen); code 3 is the test window guard.
+      const why = String(stderr || '').replace(/#< CLIXML[\s\S]*/, '').trim().split('\n')[0].slice(0, 160);
+      reject(Object.assign(new Error(err.killed ? 'Windows took too long to answer.' : `Windows refused that (${err.code}${why ? `: ${why}` : ''}).`), { code: err.code }));
+    }));
 }
 // The screen under the mouse, copied by its exact rectangle in real pixels. (Electron's desktopCapturer doesn't always
 // say which picture is which screen; with two monitors it handed over the other one.) DPI-aware, so a scaled display
@@ -782,14 +787,16 @@ async function typeFix(list, code) {
     await powershell(KEYS, { ...where, MAXCODE_STEP: 'paste' });
     // Did it land as written? Copied back and compared (spacing aside: editors re-indent pastes). If something else is
     // there now, the paste is undone.
+    // The check is extra: if Windows won't let it copy, the paste stands (it went in).
     clipboard.writeText('');
-    await powershell(KEYS, { ...where, MAXCODE_STEP: 'copy' });
-    const now = clipboard.readText();
+    let now = '';
+    try { await powershell(KEYS, { ...where, MAXCODE_STEP: 'copy' }); now = clipboard.readText(); }
+    catch (e) { if (process.env.MAXCODE_DEBUG) console.log('[fix] check copy failed:', e.code, e.message); }
     if (now.trim() && squash(now) !== squash(doc)) {
       await powershell(KEYS, { ...where, MAXCODE_STEP: 'undo' });
       throw new Error("Your editor changed what I pasted, so I undid it. Try Apply fix again, or make the fix by hand.");
     }
-    await powershell(KEYS, { ...where, MAXCODE_STEP: 'click' });   // drops the select-all
+    await powershell(KEYS, { ...where, MAXCODE_STEP: 'click' }).catch((e) => process.env.MAXCODE_DEBUG && console.log('[fix] last click failed:', e.code, e.message));   // drops the select-all
     return landed;
   } finally {
     if (!keep) setTimeout(() => clipboard.writeText(old), 1500);   // your clipboard, as it was
@@ -798,8 +805,16 @@ async function typeFix(list, code) {
 
 ipcMain.handle('screenCode', async () => {
   const { display, img } = await capture();
-  const read = await look(() => 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. Only the code itself, in the text area: never window titles, tab names, file names or menus (a tab called "#include<stdio.h>" is not code). If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code on screen, reply {"code":""}.',
-    img, 1600, 4000);   // a failure here (a daily limit, no internet) is the answer: say it, don't pretend there's no code
+  const ASK = 'Copy out the source code you can see in this screenshot (in a code editor, terminal, browser, slide, document, chat or a photo, anywhere), exactly as written, line by line, without line numbers. Only the code itself, in the text area: never window titles, tab names, file names or menus (a tab called "#include<stdio.h>" is not code). If there are several pieces of code, take the biggest. Reply with only JSON: {"lang":"the programming language, e.g. C, Python, Java","code":"the code"}. If there is no code on screen, reply {"code":""}.';
+  let read = await look(() => ASK, img, 1600, 4000);   // a failure here (a daily limit, no internet) is the answer: say it, don't pretend there's no code
+  // "No code" now and then comes back for a screen full of it: one more look, zoomed in round the mouse (you point at
+  // the code), before asking you to drag a box. (Where it is on screen is still found on the whole screen, below.)
+  if (!String(read?.out?.code || '').trim()) {
+    const { width: W, height: H } = img.getSize(), f = W / display.size.width, p = screen.getCursorScreenPoint();
+    const cw = Math.min(W, 1200), ch = Math.min(H, 800);
+    const zoom = { x: Math.round(Math.max(0, Math.min(W - cw, (p.x - display.bounds.x) * f - cw / 2))), y: Math.round(Math.max(0, Math.min(H - ch, (p.y - display.bounds.y) * f - ch / 2))), width: cw, height: ch };
+    read = await look(() => ASK, img.crop(zoom), 1200, 4000).catch(() => read);
+  }
   // A one-line read is most likely a title (Notepad names the tab after the first line): no box, you drag one.
   const lines = String(read?.out?.code || '').split('\n').filter((l) => l.trim()).length;
   const box = lines > 1 ? await findOnScreen(img, String(read.out.code), display).catch(() => null) : null;
