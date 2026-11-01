@@ -528,15 +528,23 @@ A fix ("replace") is the smallest change that makes the program correct and do w
   if (S.onScreen) window.max.mode('pet');
   // Asked twice at once and the two lists combined: one answer alone sometimes misses a bug (an undeclared variable,
   // say) that the other catches. Both take ~3 s, so it's no slower.
-  const prompt = `Debug this code. ${RULES}\n${code}\n${SHAPE}`;
+  // A real compiler first, where this PC has one (main.js compileCheck; compiled, never run): what it says is certain,
+  // so it goes to Max as fact, and "it compiles" points him at what happens when it runs.
+  const checked = await Promise.race([window.max.compileCheck(S.files.map((f) => ({ name: f.name, code: f.code })), S.lang).catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 4000))]);
+  const facts = !checked ? '' : checked.errors.length
+    ? `\nA real compiler (${checked.tool}) reports these. They are certain: each must be in your errors, with its fix.\n${checked.errors.map((e) => `- ${e.file} line ${e.line}: ${e.msg}`).join('\n')}`
+    : `\nIt compiles (checked with a real compiler, ${checked.tool}), so there are no syntax errors: look for what goes wrong when it runs.`;
+  const prompt = `Debug this code. ${RULES}\n${code}${facts}\n${SHAPE}`;
   // The second look is a different reviewer: only what the program does when it runs. The same question twice tended
   // to miss the same logic bugs (an int average, numbers joined as text).
-  const logic = `Debug this code. Someone else checks that it compiles. You check only what it DOES when it runs, by tracing it in your head with its real values: wrong results, values used before they are set, functions that don't return what is used, loops that never end, out-of-bounds, wrong arithmetic. ${RULES.split('\n').slice(1).join('\n')}\n${code}\n${SHAPE}`;
+  const logic = `Debug this code. Someone else checks that it compiles. You check only what it DOES when it runs, by tracing it in your head with its real values: wrong results, values used before they are set, functions that don't return what is used, loops that never end, out-of-bounds, wrong arithmetic. ${RULES.split('\n').slice(1).join('\n')}\n${code}${facts}\n${SHAPE}`;
   const second = window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: logic }], 'big')
     .then(parseJSON).catch(() => null);
   const first = askMax(prompt, `Max is debugging ${S.files.length > 1 ? `${S.files.length} files` : files[0].name}`, 'big');
   // Whichever answer arrives first is used, and the other gets 4 s more at most: NVIDIA sometimes queues one request
   // for a minute.
+  // Nothing after 10 s (one of NVIDIA's queues): a third copy of the question goes out, and the first answer of the
+  // three counts.
   let fromSecond = false;
   const r = await new Promise((done) => {
     let waiting = 2, got = false;
@@ -545,12 +553,25 @@ A fix ("replace") is the smallest change that makes the program correct and do w
       if (x && typeof x === 'object') { got = true; fromSecond = isSecond; done(x); } else if (!--waiting) done(null);
     };
     first.then((x) => take(x, false)); second.then((x) => take(x, true));
+    setTimeout(() => {
+      if (got) return;
+      waiting++;
+      window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }], 'big').then(parseJSON).catch(() => null).then((x) => take(x, true));
+    }, 10000);
   });
   if (!r) { if (S.onScreen) window.max.mode('panel'); return; }   // the error shows in the panel
-  const late = await Promise.race([fromSecond ? first : second, new Promise((ok) => setTimeout(ok, fromSecond ? 6000 : 4000))]);
+  // "No problems" waits longer for the second opinion: the other reviewer is often the one who sees the bug.
+  const grace = !r.errors?.length ? 15000 : fromSecond ? 6000 : 4000;
+  const late = await Promise.race([fromSecond ? first : second, new Promise((ok) => setTimeout(ok, grace))]);
   if (fromSecond) cancelAsk();   // done with it (and its spinner) either way
   r.errors = mergeErrors(r.errors || [], late?.errors || []);
   r.errors = mergeErrors(r.errors, S.files.flatMap((f) => undeclared(f, r.lang || S.lang, r.errors)));
+  // A compiler error nobody reported still gets a note (Fix all fixes it with the rest).
+  for (const e of checked?.errors || []) {
+    if (r.errors.some((x) => (x.file || S.files[0].name) === e.file && Math.abs(parseInt(x.line, 10) - e.line) <= 1)) continue;
+    const f = S.files.find((x) => x.name === e.file) || S.files[0];
+    r.errors.push({ file: f.name, line: e.line, text: f.code.split('\n')[e.line - 1] || '', kind: 'syntax', title: 'does not compile', say: `${checked.tool} says: ${e.msg}`, find: '', replace: '' });
+  }
   const unsaved = dirty ? ` (${files[0].name} has unsaved changes in ${editor || 'your editor'}: I read the saved version.)` : '';
   S.lang ||= String(r.lang || '');
   const show = (res) => {
@@ -755,16 +776,37 @@ Reply exactly in this shape:
   const answers = await Promise.all(files.map((f) => window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt(f) }], 'big').then(parseJSON).catch(() => null)));
   busy(null);
   if (!answers.some((a) => a?.code)) { task("I couldn't get the fixes just now. Try again, or fix them one by one.", 'bad'); render(); return say("Sorry, that didn't work."); }
+  // What a rewrite still left undeclared or without a value gets Max's own line fix (bottom up, so the line numbers hold).
+  const patch = (f, code) => {
+    const ls = tidy(code).split('\n');
+    for (const e of undeclared({ name: f.name, code: ls.join('\n') }, S.lang, []).sort((a, b) => b.line - a.line)) ls.splice(e.line - 1, 1, ...e.replace.split('\n'));
+    return ls.join('\n');
+  };
+  const fixedOf = new Map(files.map((f, i) => [f, answers[i]?.code ? patch(f, answers[i].code) : null]));
+  // The result goes through the compiler too (where there is one); if it still fails, Max gets the compiler's words and
+  // one more go at it, so what lands in your editor compiles.
+  const check = () => window.max.compileCheck(S.files.map((f) => ({ name: f.name, code: fixedOf.get(f) ?? f.code })), S.lang).catch(() => null);
+  busy('Max is checking the fixes');
+  let verdict = await check();
+  if (verdict?.errors.length) {
+    busy('Max is fixing what the compiler found');
+    await Promise.all(files.filter((f) => fixedOf.get(f) && verdict.errors.some((e) => e.file === f.name)).map(async (f) => {
+      const r = await window.max.tutorAsk(`${Math.random()}`, [{ role: 'system', content: SYSTEM }, { role: 'user', content: `This corrected ${f.name} still doesn't compile. ${verdict.tool} says:
+${verdict.errors.filter((e) => e.file === f.name).map((e) => `- line ${e.line}: ${e.msg}`).join('\n')}
+=== ${f.name} ===
+${fixedOf.get(f)}
+Fix only that, keeping everything else exactly as it is. Reply exactly in this shape:
+{"code":"the whole corrected ${f.name}"}` }], 'big').then(parseJSON).catch(() => null);
+      if (r?.code) fixedOf.set(f, patch(f, r.code));
+    }));
+    verdict = await check();
+  }
+  busy(null);
   const saved = [];
   try {
-    for (const [i, f] of files.entries()) {
-      let fixed = tidy(answers[i]?.code);
+    for (const f of files) {
+      const fixed = fixedOf.get(f);
       if (!fixed || fixed === tidy(f.code)) continue;
-      // What the rewrite still left undeclared or without a value gets Max's own line fix (bottom up, so the line
-      // numbers hold).
-      const ls = fixed.split('\n');
-      for (const e of undeclared({ name: f.name, code: fixed }, S.lang, []).sort((a, b) => b.line - a.line)) ls.splice(e.line - 1, 1, ...e.replace.split('\n'));
-      fixed = ls.join('\n');
       const replace = fixed + (f.code.endsWith('\n') ? '\n' : '');
       if (S.onScreen) await window.max.typeFix({ line: 1, find: f.code.replace(/\n+$/, ''), replace: fixed, code: f.code });
       if (f.path) { f.code = await window.max.tutorSave({ file: f.path, find: f.code, replace }); saved.push(f.name); }
@@ -776,7 +818,8 @@ Reply exactly in this shape:
   } catch (e) { return fixFailed(e); }
   const left = S.notes.filter((x) => !x.fixed).length, done = S.notes.length - left;
   const list = S.notes.filter((x) => x.fixed).map((x) => x.title || x.kind).filter((t, i, a) => t && a.indexOf(t) === i);
-  task(left ? `${left} problem${left > 1 ? 's' : ''} left.` : `Fixed ${done}: ${list.join(', ')}. Every fix is in the bug log.`, left ? 'bad' : '', left ? 'DEBUG' : 'FIXED');
+  const compiled = !verdict ? '' : verdict.errors.length ? ` ${verdict.tool} still reports: ${verdict.errors.map((e) => `line ${e.line}: ${e.msg}`).join('; ')}.` : ` It compiles (checked with ${verdict.tool}).`;
+  task((left ? `${left} problem${left > 1 ? 's' : ''} left.` : `Fixed ${done}: ${list.join(', ')}. Every fix is in the bug log.`) + compiled, left || verdict?.errors.length ? 'bad' : '', left ? 'DEBUG' : 'FIXED');
   render();
   if (S.onScreen) {
     if (quick && !left) window.max.screenNote({ line: S.notes[0].line, n: 0, total: 0, done, kind: 'fixed', title: '', say: `${list.join(', ')}.`, fix: '', fixed: true, code: S.files[S.notes[0].fi]?.code });

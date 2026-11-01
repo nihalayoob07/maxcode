@@ -11,7 +11,7 @@ He dresses for the time of day: pyjamas and a nightcap at night (with zzz after 
 - **Just fix it** (Settings → When I debug): no walking through bugs; Max fixes everything and the **Bug log** (home screen) keeps each fix, with the line before and after.
 - **Debug a file / Explain code**: drop a file or paste a program.
 - **Your level** (Settings): Beginner, Intermediate or Expert; every explanation is pitched for it.
-- Tests: `npm test` (Max's own code checks, no AI), `npm run bench` (13 programs in 5 languages scored against the AI; see `test/bench/bench.mjs`).
+- Tests: `npm test` (Max's own code checks, no AI), `npm run bench` (23 programs in 6 languages scored against the AI, 10 of them held out from tuning; see `test/bench/bench.mjs`).
 - **Ask anything**: "how do pointers work in C" gives a lesson with an example you can step through.
 - **Courses** (in his panel): the common languages up front, and 43 in all (Rust, Haskell, COBOL, Assembly…) through the search box. Progress is saved on the PC.
 - **Talk to him**: say "Max" ("Max, teach me Rust"), press **Ctrl+Alt+T**, or click the mic. Listening runs on your PC with a small speech model that downloads itself the first time; no key needed. He answers out loud: about a minute a day free, more with your own ElevenLabs key or Max Plus.

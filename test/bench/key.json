@@ -11,5 +11,15 @@
  {"file":"words.js","bugs":[]},
  {"file":"Stack.java","bugs":[]},
  {"file":"max.c","bugs":[]},
- {"file":"temp.py","bugs":[]}
+ {"file":"temp.py","bugs":[]},
+ {"file":"Bank.cs","held":true,"bugs":[[9,9,"=+ instead of +="],[12,17,"not all paths return"]],"must":["balance \\+= amount","return true"],"mustNot":["=\\+ amount"]},
+ {"file":"vote.py","held":true,"bugs":[[2,3,"age is text"],[6,7,"text + number"]],"must":["int\\("],"mustNot":["\" can vote in \" \\+ years \\+"]},
+ {"file":"double.js","held":true,"bugs":[[2,4,"map callback returns nothing"]],"must":["return n \\* 2|=> n \\* 2|\\(n\\) => \\(?n \\* 2"],"mustNot":[]},
+ {"file":"Matrix.java","held":true,"bugs":[[6,7,"<= length"]],"must":[],"mustNot":["<= m\\[i\\]\\.length"]},
+ {"file":"fact.c","held":true,"bugs":[[5,7,"result starts at 0"]],"must":["result = 1"],"mustNot":[]},
+ {"file":"greet.py","held":true,"bugs":[[1,1,"missing colon"]],"must":["def greet\\(name\\):"],"mustNot":[]},
+ {"file":"primes.py","held":true,"bugs":[]},
+ {"file":"reverse.c","held":true,"bugs":[]},
+ {"file":"Counter.java","held":true,"bugs":[]},
+ {"file":"todo.js","held":true,"bugs":[]}
 ]

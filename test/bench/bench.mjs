@@ -16,6 +16,7 @@ await new Promise((r) => { ws.onopen = r; });
 const ev = async (e) => { const r = await new Promise((res) => { const id = ++n; pend[id] = res; ws.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression: e, awaitPromise: true, returnByValue: true } })); }); return r.exceptionDetails ? { err: r.exceptionDetails.exception?.description } : r.result.value; };
 await ev(`window.max.mode('panel'); document.querySelector('#home').hidden = true; 1`);
 let found = 0, total = 0, fps = 0, fixesOk = 0, fixesAll = 0, secs = [];
+const held = { found: 0, total: 0, fps: 0, ok: 0, all: 0 };   // the programs Max was never tuned on
 for (const k of key) {
   const file = path.join(work, k.file);
   fs.copyFileSync(path.join(dir, 'programs', k.file), file);
@@ -28,12 +29,14 @@ for (const k of key) {
   const missed = k.bugs.filter((b) => !hit(b));
   const extra = notes.filter((x) => !k.bugs.some((b) => x.line >= b[0] - 1 && x.line <= b[1] + 1));
   found += k.bugs.length - missed.length; total += k.bugs.length; fps += extra.length;
+  if (k.held) { held.found += k.bugs.length - missed.length; held.total += k.bugs.length; held.fps += extra.length; }
   let fixLine = '';
   if (k.bugs.length) {
     await ev(`fixAll()`);
     const out = fs.readFileSync(file, 'utf8');
     const bad = [...(k.must || []).filter((re) => !new RegExp(re).test(out)).map((re) => `needs /${re}/`), ...(k.mustNot || []).filter((re) => new RegExp(re).test(out)).map((re) => `still /${re}/`)];
     fixesAll++; if (!bad.length) fixesOk++;
+    if (k.held) { held.all++; if (!bad.length) held.ok++; }
     fixLine = bad.length ? `FIX WRONG: ${bad.join('; ')}` : 'fix ok';
     if (bad.length) console.log(out.split('\n').map((l, i) => `      ${String(i + 1).padStart(2)} ${l}`).join('\n'));
   }
@@ -43,4 +46,5 @@ for (const k of key) {
 }
 secs.sort((a, b) => a - b);
 console.log(`\nTOTAL found ${found}/${total}  false alarms ${fps}  fixes right ${fixesOk}/${fixesAll}  median ${secs[Math.floor(secs.length / 2)]?.toFixed(1)} s  max ${secs[secs.length - 1]?.toFixed(1)} s`);
+console.log(`HELD OUT (never tuned on) found ${held.found}/${held.total}  false alarms ${held.fps}  fixes right ${held.ok}/${held.all}`);
 process.exit();

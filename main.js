@@ -284,6 +284,45 @@ ipcMain.handle('course', (_e, lang, data) => {
   if (data !== undefined) { all[lang] = data; fs.writeFileSync(COURSES(), JSON.stringify(all)); }
   return all[lang] || null;
 });
+// A real compiler's verdict, where there's one on this PC: the code is compiled, never run (it may come off any web
+// page). JavaScript by Electron's own Node, Python by an installed Python, Java by an installed JDK. Resolves to
+// { tool, errors: [{ file, line, msg }] } (no errors: it compiles), or null (no compiler for it, or it failed).
+const CHECKERS = {
+  javascript: { tool: 'Node', ext: '.js', each: (f) => [process.execPath, ['--check', f], { ELECTRON_RUN_AS_NODE: '1' }] },
+  python: { tool: 'Python', ext: '.py', each: (f) => ['python', ['-X', 'utf8', '-m', 'py_compile', f], {}] },
+  java: { tool: 'javac', ext: '.java', all: (fs_, dir) => ['javac', ['-d', dir, '-encoding', 'utf8', ...fs_], {}] },
+};
+const run = (cmd, args, env, cwd) => new Promise((ok) => require('child_process').execFile(cmd, args,
+  { cwd, env: { ...process.env, ...env }, timeout: 8000, windowsHide: true, maxBuffer: 4e6 }, (err, stdout, stderr) => ok({ err, out: `${stdout}\n${stderr}` })));
+ipcMain.handle('compileCheck', async (_e, files, lang) => {
+  const c = CHECKERS[String(lang).toLowerCase().replace(/^js$/, 'javascript')];
+  if (!c || !files?.length) return null;
+  const dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'maxcode-check-'));
+  try {
+    // Each file by its own name (Java needs it), or a made-up one for code read off the screen.
+    const named = files.map((f, i) => ({ ...f, disk: path.join(dir, /^[\w.-]+$/.test(f.name) && f.name.endsWith(c.ext) ? f.name : `code${i}${c.ext}`) }));
+    for (const f of named) fs.writeFileSync(f.disk, f.code);
+    const back = (s) => named.find((f) => s && path.basename(f.disk) === path.basename(s))?.name || named[0].name;
+    const errors = [];
+    if (c.all) {
+      const r = await run(...c.all(named.map((f) => f.disk), dir), dir);
+      if (r.err?.code === 'ENOENT') return null;
+      for (const m of r.out.matchAll(/^(.+?\.java):(\d+): error: (.+)$/gm)) errors.push({ file: back(m[1]), line: Number(m[2]), msg: m[3] });
+      if (r.err && !errors.length) return null;
+    } else {
+      for (const f of named) {
+        const r = await run(...c.each(f.disk), dir);
+        if (r.err?.code === 'ENOENT' || /Microsoft Store|was not found/i.test(r.out)) return null;   // Windows' fake python.exe
+        if (!r.err) continue;
+        const line = Number((new RegExp(`${path.basename(f.disk).replace(/\./g, '\\.')}(?:", line |:)(\\d+)`).exec(r.out) || [])[1]) || 0;
+        const msg = (r.out.match(/^\s*(\w*Error: .+)$/m) || [])[1];
+        if (!msg) return null;   // a failure that isn't a compile error: say nothing rather than something wrong
+        errors.push({ file: f.name, line, msg: msg.trim() });
+      }
+    }
+    return { tool: c.tool, errors };
+  } catch { return null; } finally { fs.rm(dir, { recursive: true, force: true }, () => {}); }
+});
 // The bug log: every fix Max made (newest first, the last 200 debug runs), so "just fix it" can be checked later.
 // add: one run's entry to add, 'clear' to empty it, nothing to read it.
 ipcMain.handle('bugLog', (_e, add) => {
@@ -693,6 +732,7 @@ if ($env:MAXCODE_EXPECT_WINDOW) {
 }
 if ($env:MAXCODE_STEP -eq 'copy') { Ctrl 0x41; Ctrl 0x43; Start-Sleep -Milliseconds 200 }
 if ($env:MAXCODE_STEP -eq 'paste') { Ctrl 0x41; Ctrl 0x56; Start-Sleep -Milliseconds 250 }
+if ($env:MAXCODE_STEP -eq 'undo') { Ctrl 0x5A; Start-Sleep -Milliseconds 150 }
 $null = [MaxCode.Input]::SetCursorPos([int]$at[2], [int]$at[3])`;
 // Fix all sends `fixes` (each { line, find, replace }): one copy, every fix made in the text, one paste. Resolves to which
 // of them landed (true/false each).
@@ -713,9 +753,19 @@ async function typeFix(list, code) {
   const at = point(x, y), back = screen.dipToScreenPoint(screen.getCursorScreenPoint());
   const where = { MAXCODE_AT: [at.x, at.y, back.x, back.y].join(',') }, old = clipboard.readText();
   clipboard.writeText('');   // so a copy that didn't happen can't be mistaken for the document
+  let keep = false;   // the fixed code left on your clipboard on purpose
+  const squash = (s) => String(s).replace(/\s+/g, '');
   try {
     await powershell(KEYS, { ...where, MAXCODE_STEP: 'copy' });
     let doc = clipboard.readText();
+    if (!doc.trim()) {
+      // Nothing to copy: a PDF, a picture, a web page, a video. The fixed code goes on your clipboard instead.
+      await powershell(KEYS, { ...where, MAXCODE_STEP: 'click' });
+      let text = code;
+      for (const f of list) text = tutorCode.fixInText(text, f.find, f.replace, f.line) || text;
+      clipboard.writeText(text); keep = true;
+      throw new Error("I can't type into that window (it looks read-only), so the fixed code is on your clipboard: paste it where you need it.");
+    }
     const landed = list.map((f) => { const t = tutorCode.fixInText(doc, f.find, f.replace, f.line); if (t) doc = t; return !!t; });
     if (!landed.some(Boolean)) {
       await powershell(KEYS, { ...where, MAXCODE_STEP: 'click' });   // just the click: drops the select-all, changes nothing
@@ -723,9 +773,19 @@ async function typeFix(list, code) {
     }
     clipboard.writeText(doc);
     await powershell(KEYS, { ...where, MAXCODE_STEP: 'paste' });
+    // Did it land as written? Copied back and compared (spacing aside: editors re-indent pastes). If something else is
+    // there now, the paste is undone.
+    clipboard.writeText('');
+    await powershell(KEYS, { ...where, MAXCODE_STEP: 'copy' });
+    const now = clipboard.readText();
+    if (now.trim() && squash(now) !== squash(doc)) {
+      await powershell(KEYS, { ...where, MAXCODE_STEP: 'undo' });
+      throw new Error("Your editor changed what I pasted, so I undid it. Try Apply fix again, or make the fix by hand.");
+    }
+    await powershell(KEYS, { ...where, MAXCODE_STEP: 'click' });   // drops the select-all
     return landed;
   } finally {
-    setTimeout(() => clipboard.writeText(old), 1500);   // your clipboard, as it was
+    if (!keep) setTimeout(() => clipboard.writeText(old), 1500);   // your clipboard, as it was
   }
 }
 
@@ -818,7 +878,7 @@ app.on('web-contents-created', (_e, wc) => wc.setWindowOpenHandler(({ url }) => 
 }));
 
 // Test runs get their own settings folder and run beside the installed Max instead of closing it.
-if (process.env.MAXCODE_TEST_SCREEN) app.setPath('userData', `${app.getPath('userData')}-test`);
+if (process.env.MAXCODE_TEST_SCREEN || process.env.MAXCODE_EXPECT_WINDOW) app.setPath('userData', `${app.getPath('userData')}-test`);
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (win) setMode('panel'); });
