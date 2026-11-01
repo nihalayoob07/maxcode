@@ -289,10 +289,15 @@ ipcMain.handle('course', (_e, lang, data) => {
 // Python by an installed Python, Java by an installed JDK. Resolves to { tool, errors: [{ file, line, msg }] } (no
 // errors: it compiles), or null (no compiler for it, or it failed).
 const TCC = path.join(__dirname, 'assets', 'tcc', 'tcc.exe').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+const MSYS = 'C:\\msys64\\ucrt64\\bin';
+const gpp = () => (fs.existsSync(`${MSYS}\\g++.exe`) ? `${MSYS}\\g++.exe` : 'g++');
+const gppEnv = () => (fs.existsSync(`${MSYS}\\g++.exe`) ? { PATH: `${MSYS};${process.env.PATH}` } : {});   // its own DLLs and cc1plus
 const CHECKERS = {
   javascript: { tool: 'Node', ext: '.js', each: (f) => [process.execPath, ['--check', f], { ELECTRON_RUN_AS_NODE: '1' }] },
   python: { tool: 'Python', ext: '.py', each: (f) => ['python', ['-X', 'utf8', '-m', 'py_compile', f], {}] },
   c: { tool: 'TinyCC', ext: '.c', also: ['.h'], each: (f, dir) => [TCC, ['-c', f, '-o', `${f}.o`, '-I', dir], {}] },
+  // C++ only where the PC has g++ (on PATH, or MSYS2's usual place: a PATH change reaches Max at his next start).
+  'c++': { tool: 'g++', ext: '.cpp', also: ['.h', '.hpp'], each: (f, dir) => [gpp(), ['-fsyntax-only', '-I', dir, f], gppEnv()] },
   java: { tool: 'javac', ext: '.java', all: (fs_, dir) => ['javac', ['-d', dir, '-encoding', 'utf8', ...fs_], {}] },
 };
 const run = (cmd, args, env, cwd) => new Promise((ok) => require('child_process').execFile(cmd, args,
@@ -318,8 +323,8 @@ ipcMain.handle('compileCheck', async (_e, files, lang) => {
         const r = await run(...c.each(f.disk, dir), dir);
         if (r.err?.code === 'ENOENT' || /Microsoft Store|was not found/i.test(r.out)) return null;   // Windows' fake python.exe
         if (!r.err) continue;
-        // TinyCC: "file.c:5: error: ';' expected" (in a header too: that file is named)
-        const tcc = /^(.+?):(\d+): error: (.+)$/m.exec(r.out);
+        // TinyCC "file.c:5: error: ';' expected", g++ "file.cpp:5:9: error: ..." (in a header too: that file is named)
+        const tcc = /^(.+?):(\d+):(?:\d+:)? (?:fatal )?error: (.+)$/m.exec(r.out);
         if (tcc) { errors.push({ file: back(tcc[1]), line: Number(tcc[2]), msg: tcc[3].trim() }); continue; }
         const line = Number((new RegExp(`${path.basename(f.disk).replace(/\./g, '\\.')}(?:", line |:)(\\d+)`).exec(r.out) || [])[1]) || 0;
         const msg = (r.out.match(/^\s*(\w*Error: .+)$/m) || [])[1];
