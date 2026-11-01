@@ -669,16 +669,25 @@ ipcMain.on('screenNote', (_e, n) => {
   if (n.code) codeNow = n.code;   // the code as it is now (after fixes), to find it on screen again
   placeNote();
 });
+// The side the note sits on is kept while it still fits there: the code's right edge is an estimate, and near the
+// threshold it made the note jump from side to side every reading (VS Code).
+let side = null;
 function placeNote() {
   if (!screenMap || !note) return;
   const at = lineOnScreen(note.line - 1), area = at.display.workArea;
-  const right = at.x1 + 12 + CALLOUT.width <= area.x + area.width;   // beside the code on the right, else on its left
+  const fitsRight = at.x1 + 12 + CALLOUT.width <= area.x + area.width, fitsLeft = at.x0 - 12 - CALLOUT.width >= area.x;
+  if (!side || (side === 'right' ? !fitsRight : !fitsLeft && fitsRight)) side = fitsRight ? 'right' : 'left';
+  const right = side === 'right';   // beside the code on the right, else on its left
   const x = right ? at.x1 + 12 : Math.max(area.x, at.x0 - 12 - CALLOUT.width);
-  const y = Math.max(area.y, Math.min(at.y - CALLOUT.arrowY, area.y + area.height - CALLOUT.height));
+  let y = Math.max(area.y, Math.min(at.y - CALLOUT.arrowY, area.y + area.height - CALLOUT.height));
+  if (callout && !callout.isDestroyed()) {
+    // A few pixels of wobble between readings isn't movement: it stays put (and the arrow points from where it is).
+    const b = callout.getBounds();
+    if (Math.abs(b.x - x) > 8 || Math.abs(b.y - y) > 6) callout.setBounds({ x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height });
+    else y = b.y;
+  }
   const send = () => callout.webContents.send('note', { ...note, side: right ? 'left' : 'right', arrowY: at.y - y });
   if (callout && !callout.isDestroyed()) {
-    const b = callout.getBounds();
-    if (Math.abs(b.x - x) > 2 || Math.abs(b.y - y) > 2) callout.setBounds({ x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height });
     if (!callout.isVisible()) callout.showInactive();
     return send();
   }
@@ -713,6 +722,8 @@ async function track() {
     const m = findCode(near, display, k, codeNow) || findCode(await ocr(img), display, k, codeNow);
     if (typing || !callout || callout.isDestroyed()) return;
     if (!m) { callout.hide(); return; }   // scrolled away, another tab, minimised: back when the code is
+    // The box moves with the code but keeps the width of the careful first reading (re-estimated, it wobbled).
+    if (screenMap.k === k && Number.isFinite(screenMap.m.x1 - screenMap.m.x0)) m.x1 = m.x0 + (screenMap.m.x1 - screenMap.m.x0);
     screenMap = { m, k, display };
     placeNote();
   } catch {} finally { tracking = false; }
@@ -839,7 +850,7 @@ ipcMain.handle('screenCode', async () => {
   // Where each line is: from OCR when it matched; otherwise spaced evenly down the box you confirmed (it holds the code),
   // so the notes and fixes always go on your real code, never only into Max's panel.
   const m = screenSeen && matchLines(screenSeen.seen, code);
-  codeNow = code;
+  codeNow = code; side = null;   // a new screen read picks its side afresh
   if (m) screenMap = { m, k: screenSeen.k, display: screenSeen.display };
   else {
     const step = (y1 - y0) / Math.max(1, code.replace(/\n+$/, '').split('\n').length);
