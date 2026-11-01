@@ -66,6 +66,7 @@
       "artifactName": "MaxCode-Setup.${ext}"
     },
     "asarUnpack": [
+      "assets/tcc/**",
       "**/*.node",
       "**/onnxruntime-node/**",
       "**/@img/**",

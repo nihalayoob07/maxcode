@@ -285,11 +285,14 @@ ipcMain.handle('course', (_e, lang, data) => {
   return all[lang] || null;
 });
 // A real compiler's verdict, where there's one on this PC: the code is compiled, never run (it may come off any web
-// page). JavaScript by Electron's own Node, Python by an installed Python, Java by an installed JDK. Resolves to
-// { tool, errors: [{ file, line, msg }] } (no errors: it compiles), or null (no compiler for it, or it failed).
+// page). JavaScript by Electron's own Node, C by TinyCC (assets/tcc, ships with Max: LGPL, tinycc 0.9.27 win64),
+// Python by an installed Python, Java by an installed JDK. Resolves to { tool, errors: [{ file, line, msg }] } (no
+// errors: it compiles), or null (no compiler for it, or it failed).
+const TCC = path.join(__dirname, 'assets', 'tcc', 'tcc.exe').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
 const CHECKERS = {
   javascript: { tool: 'Node', ext: '.js', each: (f) => [process.execPath, ['--check', f], { ELECTRON_RUN_AS_NODE: '1' }] },
   python: { tool: 'Python', ext: '.py', each: (f) => ['python', ['-X', 'utf8', '-m', 'py_compile', f], {}] },
+  c: { tool: 'TinyCC', ext: '.c', also: ['.h'], each: (f, dir) => [TCC, ['-c', f, '-o', `${f}.o`, '-I', dir], {}] },
   java: { tool: 'javac', ext: '.java', all: (fs_, dir) => ['javac', ['-d', dir, '-encoding', 'utf8', ...fs_], {}] },
 };
 const run = (cmd, args, env, cwd) => new Promise((ok) => require('child_process').execFile(cmd, args,
@@ -300,7 +303,8 @@ ipcMain.handle('compileCheck', async (_e, files, lang) => {
   const dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'maxcode-check-'));
   try {
     // Each file by its own name (Java needs it), or a made-up one for code read off the screen.
-    const named = files.map((f, i) => ({ ...f, disk: path.join(dir, /^[\w.-]+$/.test(f.name) && f.name.endsWith(c.ext) ? f.name : `code${i}${c.ext}`) }));
+    const keepName = (n) => /^[\w.-]+$/.test(n) && [c.ext, ...(c.also || [])].some((x) => n.endsWith(x));   // headers keep theirs
+    const named = files.map((f, i) => ({ ...f, disk: path.join(dir, keepName(f.name) ? f.name : `code${i}${c.ext}`) }));
     for (const f of named) fs.writeFileSync(f.disk, f.code);
     const back = (s) => named.find((f) => s && path.basename(f.disk) === path.basename(s))?.name || named[0].name;
     const errors = [];
@@ -310,10 +314,13 @@ ipcMain.handle('compileCheck', async (_e, files, lang) => {
       for (const m of r.out.matchAll(/^(.+?\.java):(\d+): error: (.+)$/gm)) errors.push({ file: back(m[1]), line: Number(m[2]), msg: m[3] });
       if (r.err && !errors.length) return null;
     } else {
-      for (const f of named) {
-        const r = await run(...c.each(f.disk), dir);
+      for (const f of named.filter((x) => x.disk.endsWith(c.ext))) {
+        const r = await run(...c.each(f.disk, dir), dir);
         if (r.err?.code === 'ENOENT' || /Microsoft Store|was not found/i.test(r.out)) return null;   // Windows' fake python.exe
         if (!r.err) continue;
+        // TinyCC: "file.c:5: error: ';' expected" (in a header too: that file is named)
+        const tcc = /^(.+?):(\d+): error: (.+)$/m.exec(r.out);
+        if (tcc) { errors.push({ file: back(tcc[1]), line: Number(tcc[2]), msg: tcc[3].trim() }); continue; }
         const line = Number((new RegExp(`${path.basename(f.disk).replace(/\./g, '\\.')}(?:", line |:)(\\d+)`).exec(r.out) || [])[1]) || 0;
         const msg = (r.out.match(/^\s*(\w*Error: .+)$/m) || [])[1];
         if (!msg) return null;   // a failure that isn't a compile error: say nothing rather than something wrong
