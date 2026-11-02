@@ -7,6 +7,25 @@ const path = require('path');
 const fs = require('fs');
 const tutorCode = require('./shared/tutor');
 
+// Only Max's own pages (files in ui/) may talk to the main process (and get the microphone: see the end). Every
+// ipcMain handler below is wrapped by this, so a page from anywhere else can't call any of them.
+const UI = require('url').pathToFileURL(path.join(__dirname, 'ui')).href;
+function ours(url) { return String(url || '').startsWith(`${UI}/`); }
+const wrapped = new Map();
+for (const name of ['handle', 'on']) {
+  const real = ipcMain[name].bind(ipcMain);
+  ipcMain[name] = (channel, fn) => {
+    const w = (e, ...args) => {
+      if (!ours(e.senderFrame?.url)) { if (name === 'handle') throw new Error('Refused.'); return undefined; }
+      return fn(e, ...args);
+    };
+    wrapped.set(fn, w);
+    return real(channel, w);
+  };
+}
+const removeListener = ipcMain.removeListener.bind(ipcMain);
+ipcMain.removeListener = (channel, fn) => { removeListener(channel, wrapped.get(fn) || fn); wrapped.delete(fn); return ipcMain; };
+
 const API = 'https://integrate.api.nvidia.com/v1/chat/completions';
 const MODEL = 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const VL_MODEL = 'nvidia/nemotron-3.5-super-vl-120b-a12b';   // reads code off the screen
@@ -551,7 +570,7 @@ async function look(prompt, img, maxW, maxTokens) {
 function pointAt(display, box) {
   const o = new BrowserWindow({
     ...display.bounds, frame: false, transparent: true, resizable: false, movable: false, skipTaskbar: true, hasShadow: false,
-    alwaysOnTop: true, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    alwaysOnTop: true, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   o.setAlwaysOnTop(true, 'screen-saver');
   o.loadFile(path.join(__dirname, 'ui', 'point.html'), { query: { box: box ? box.join(',') : '' } });
@@ -708,7 +727,7 @@ function placeNote() {
   callout = new BrowserWindow({
     x: Math.round(x), y: Math.round(y), width: CALLOUT.width, height: CALLOUT.height, frame: false, transparent: true, resizable: false,
     skipTaskbar: true, hasShadow: false, alwaysOnTop: true, focusable: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   callout.setAlwaysOnTop(true, 'screen-saver');
   callout.loadFile(path.join(__dirname, 'ui', 'callout.html'));
@@ -879,7 +898,7 @@ function openSettings() {
     width: 340, height: 300, useContentSize: true, resizable: false, maximizable: false, minimizable: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1e28' : '#fbfaf7', title: 'Max Code settings',
     icon: path.join(__dirname, 'assets', 'icon.png'), autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   settings.setMenu(null);
   settings.loadFile(path.join(__dirname, 'ui', 'settings.html'));
@@ -898,7 +917,7 @@ async function open() {
   win = new BrowserWindow({
     ...hideBounds(), frame: false, transparent: true, resizable: false, maximizable: false, skipTaskbar: true,
     hasShadow: false, alwaysOnTop: prefs.onTop, title: 'Max Code', icon: path.join(__dirname, 'assets', 'icon.png'), show: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   // A reloaded page starts as the hand: tell it what the window is now (a panel-sized window drawn as a hand showed a
@@ -919,10 +938,20 @@ async function open() {
   if (prefs.wake) setTimeout(() => asr().catch(() => {}), 5000);   // warm Whisper up (downloads it the first time)
 }
 // Links open in the browser, never inside the app (both windows).
-app.on('web-contents-created', (_e, wc) => wc.setWindowOpenHandler(({ url }) => {
-  if (/^https:\/\//.test(url)) shell.openExternal(url);
-  return { action: 'deny' };
-}));
+app.on('web-contents-created', (_e, wc) => {
+  wc.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  // No page ever navigates away from Max's own files (a link in an answer opens in the browser instead).
+  wc.on('will-navigate', (e, url) => { if (!ours(url)) e.preventDefault(); });
+  wc.on('will-attach-webview', (e) => e.preventDefault());
+});
+app.whenReady().then(() => {
+  const { session } = require('electron');
+  session.defaultSession.setPermissionRequestHandler((wc, permission, done) => done(permission === 'media' && ours(wc.getURL())));
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => permission === 'media' && ours(wc?.getURL()));
+});
 
 // Test runs get their own settings folder and run beside the installed Max instead of closing it.
 if (process.env.MAXCODE_TEST_SCREEN || process.env.MAXCODE_EXPECT_WINDOW) app.setPath('userData', `${app.getPath('userData')}-test`);
