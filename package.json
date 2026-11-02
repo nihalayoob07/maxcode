@@ -9,7 +9,8 @@
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
     "test": "node shared/fixintext.check.js && node test/checks.test.js",
-    "bench": "node test/bench/bench.mjs"
+    "bench": "node test/bench/bench.mjs",
+    "qa": "node test/bench/qa.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.0.0",

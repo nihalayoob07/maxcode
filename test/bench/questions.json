@@ -1,0 +1,14 @@
+[
+ {"q":"What's the difference between == and .equals() for strings in Java?","all":["reference|same object|identity|memory","content|value|characters|text"]},
+ {"q":"Why does my C program print a weird number for an int I never gave a value?","all":["initiali|value|set","garbage|undefined|random|leftover|whatever|unpredictable"]},
+ {"q":"How do I install gcc on Windows?","all":["msys2\\.org"]},
+ {"q":"How do I get Python on Windows?","all":["python\\.org/downloads"]},
+ {"q":"What is a segmentation fault?","all":["memory","access|pointer|outside|not allowed|invalid"]},
+ {"q":"In Python, why is 0.1 + 0.2 not exactly 0.3?","all":["binary|floating","approximat|exact|precision|round"]},
+ {"q":"What numbers does range(5) give in Python?","all":["\\b0\\b","\\b4\\b"],"none":["\\b5\\b.*include"]},
+ {"q":"What's the difference between let and const in JavaScript?","all":["reassign|change|new value","const"]},
+ {"q":"Why does \"Total: \" + 5 + 5 print Total: 55 in JavaScript?","all":["left to right|left-to-right|string|text","bracket|parenthes"]},
+ {"q":"What does a NullPointerException mean in Java?","all":["null","object|reference"]},
+ {"q":"What does i++ do?","all":["1|one","add|increase|increment"]},
+ {"q":"What is an off-by-one error?","all":["one too many|one too few|once too|extra|one more|one less|boundary|<=|loop"]}
+]

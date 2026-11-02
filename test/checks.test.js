@@ -61,7 +61,7 @@ assert.strictEqual(trap('const n = [3, 1, 2];\nn.sort((a, b) => a - b);', 'JavaS
 
 // The bench programs (test/bench/programs): exactly these notes, nothing else
 const LANG = { '.cs': 'C#', '.java': 'Java', '.cpp': 'C++', '.c': 'C', '.py': 'Python', '.js': 'JavaScript' };
-const want = { 'cart.js': ['23 numbers joined as text'], 'score.js': ['10 numbers joined as text'], 'stats.js': ['8 sort() sorts numbers as text'], 'Grade.cs': ['9 missing else'], 'Grades.java': ['7 integer division'], 'sum.c': ['5 variable not declared', '4 variable has no value'], 'vec.cpp': ['7 variable has no value'] };
+const want = { 'cart.js': ['23 numbers joined as text'], 'score.js': ['10 numbers joined as text'], 'stats.js': ['8 sort() sorts numbers as text'], 'Grade.cs': ['9 missing else'], 'inject.c': ['8 variable has no value'], 'Grades.java': ['7 integer division'], 'sum.c': ['5 variable not declared', '4 variable has no value'], 'vec.cpp': ['7 variable has no value'] };
 const dir = path.join(__dirname, 'bench', 'programs');
 for (const f of fs.readdirSync(dir)) {
   const got = undeclared({ name: f, code: fs.readFileSync(path.join(dir, f), 'utf8') }, LANG[path.extname(f)], []).map((e) => `${e.line} ${e.title}`);
