@@ -23,7 +23,7 @@ He dresses for the time of day: pyjamas and a nightcap at night (with zzz after 
 
 ## Privacy and safety
 
-- **What leaves your PC, and only when you ask:** the code you debug, explain or ask about, and for **Debug my code** a picture of the screen it's on. It goes to NVIDIA (through the Max Code server unless you added your own key). Nothing is sent in the background, and the screen is never captured unless you press Debug my code or Apply fix.
+- **What leaves your PC, and only when you ask:** the code you debug, explain or ask about, and for **Debug my code** a picture of the screen it's on. It goes to NVIDIA (through the Max Code server unless you added your own key). Nothing is sent in the background. While a note sits beside your code, Max looks at the screen every 1.5 s to follow it, but those looks are read on the PC (Windows' own text recognition) and never sent anywhere.
 - **Stays on your PC:** your voice (heard by Whisper on the PC), your keys (encrypted with Windows DPAPI), the bug log, course progress and settings. Pictures of the screen are deleted as soon as they're read.
 - **Your code is never run.** Max only compiles it to check it (TinyCC for C, plus g++, javac, Python and Node when the PC has them).
 - **Code is data, not instructions.** Text inside code (a comment saying "ignore your rules") can't steer Max into adding anything to your files: Fix all refuses a rewrite that changes more than the bugs need, or adds things like running commands, network calls or deleting files that weren't already there.
