@@ -8,7 +8,8 @@
     $('#call').style.setProperty('--arrow', `${Math.round(n.arrowY - 2)}px`);
     $('#title').className = n.fixed ? 'ok' : '';
     $('#log').hidden = !n.done;   // "Just fix it": what was fixed, and the log with every change
-    $('#title').textContent = n.done ? `Fixed ${n.done} problem${n.done > 1 ? 's' : ''}` : !n.total ? 'All clear' : `#${n.n} · ${n.kind || 'error'}${n.title ? ` · ${n.title}` : ''}${n.fixed ? ' · fixed' : ''}`;
+    $('#reveal').hidden = !n.reveal;   // a hint first; Show me tells the whole story
+    $('#title').textContent = n.done ? `Fixed ${n.done} problem${n.done > 1 ? 's' : ''}` : n.reveal ? `#${n.n} · hint` : !n.total ? 'All clear' : `#${n.n} · ${n.kind || 'error'}${n.title ? ` · ${n.title}` : ''}${n.fixed ? ' · fixed' : ''}`;
     // `name` in Max's text shows as code (escaped first, like tutor.js rich)
     $('#say').innerHTML = String(n.say ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/`([^`\n]+)`/g, '<code>$1</code>');
     $('#fixBox').hidden = !n.fix;
@@ -27,6 +28,7 @@
     $('#all').textContent = `Fix all ${n.fixable}`;
   });
   $('#log').onclick = () => window.max.calloutAct('log');
+  $('#reveal').onclick = () => window.max.calloutAct('reveal');
   $('#all').onclick = () => {
     $('#all').disabled = $('#apply').disabled = true;
     $('#all').textContent = 'Fixing…';

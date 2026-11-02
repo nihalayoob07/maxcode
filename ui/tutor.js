@@ -147,6 +147,8 @@ function noteHTML() {
     }
     const fix = !n.fixed && n.find ? btn(`Fix #${n.n}`, 'fix', last ? 'p' : '') : '';
     const open = fixable(), all = open > 1 ? btn(`Fix all ${open}`, 'fixall') : '';
+    // Hint first (Teach me, below Expert): a nudge to find it yourself; "Show me" gives the whole story.
+    if (hinted(n)) return `<div class="note"><div class="head bad">#${n.n} · HINT</div>${rich(n.hint)}<div class="acts">${btn('‹ Previous', 'prev', '', S.at === 0)}${btn('Show me', 'reveal', 'p')}${all}${fix}${last ? '' : btn('Next ›', 'next')}</div></div>`;
     return `<div class="note">${head}${rich(n.say)}<div class="acts">${btn('‹ Previous', 'prev', '', S.at === 0)}${all}${fix}${last ? '' : btn('Next ›', 'next', fix ? '' : 'p')}</div></div>`;
   }
   const text = S.simple && n.simple ? n.simple : n.say;
@@ -277,7 +279,7 @@ setMuted(muted);
 function sayCurrent() {
   const n = current();
   if (!n) return;
-  if (S.kind === 'debug') return say(`Number ${n.n}, line ${n.line}${n.fileName && S.files.length > 1 ? ` of ${n.fileName}` : ''}. ${n.say}`);
+  if (S.kind === 'debug') return say(`Number ${n.n}, line ${n.line}${n.fileName && S.files.length > 1 ? ` of ${n.fileName}` : ''}. ${hinted(n) ? `Here's a hint. ${n.hint}` : n.say}`);
   const text = S.simple && n.simple ? n.simple : n.say;
   say(S.at === S.notes.length - 1 && S.offer ? `${text} Want to try an example?` : text);
 }
@@ -295,12 +297,47 @@ function go(i) {
 function screenNote() {
   const n = current();
   if (!n) return window.max.hideNotes();
+  if (hinted(n)) return window.max.screenNote({ line: n.line, n: n.n, total: S.notes.length, kind: 'hint', title: '', say: n.hint, fix: '', reveal: true, fixed: false, fixable: fixable(), code: S.files[n.fi]?.code });
   window.max.screenNote({ line: n.line, n: n.n, total: S.notes.length, kind: n.kind, title: n.title, say: n.say,
     fix: n.find && !n.fixed ? n.replace : '', fixed: !!n.fixed, fixable: fixable(), code: S.files[n.fi]?.code });
 }
+// A bug shown as a hint until "Show me" (research: hints, not answers, keep you learning; experts get it straight).
+const hinted = (n) => S.hints && n.hint && !n.revealed && !n.fixed;
+function reveal() {
+  const n = current();
+  if (!n) return;
+  n.revealed = true;
+  render();
+  if (S.onScreen) screenNote();
+  sayCurrent();
+}
+// Practise one of your common mistakes (the bug log's Practise buttons, home.js): a short program with exactly that
+// mistake hidden in it to find and fix yourself, so spotting it becomes a habit. Check answer and Hint work as usual.
+async function practiceOn(mistake, lang) {
+  reset(null);
+  S.lang = lang || 'Python';
+  render();
+  const make = () => askMax(`Write a short ${S.lang} program (6 to 14 lines) for a learner to debug. Exactly ONE line has a bug, of this kind: ${mistake}. Every other line is completely correct (if the mistake is a missing semicolon, every other statement keeps its semicolon). Keep it simple and realistic (a small calculation, loop or list), with no comments that point at the bug.
+Reply exactly in this shape:
+{"program":"the whole program, with the bug","hint":"one helpful hint that doesn't give the answer away"}`, 'Max is making a find-the-bug exercise');
+  // Line breaks sometimes come written out as \n. A mistake a compiler catches must make it fail, or there's no bug to
+  // find: then one more try.
+  const program = (r) => { const p = String(r?.program || ''); return tidy(!p.includes('\n') && p.includes('\\n') ? p.replace(/\\n/g, '\n').replace(/\\t/g, '    ') : p); };
+  let r = await make();
+  if (/semicolon|declar|syntax|compile|bracket|brace|parenthes|colon|indent/i.test(mistake) && r?.program) {
+    const c = await window.max.compileCheck([{ name: `practice${{ C: '.c', 'C++': '.cpp', Java: '.java', Python: '.py', JavaScript: '.js' }[S.lang] || ''}`, code: program(r) }], S.lang).catch(() => null);
+    if (c && c.errors.length !== 1) r = (await make()) || r;   // none: no bug; several (javac, g++ list them all): not one
+  }
+  if (!r?.program) return;
+  S.kind = 'practice'; S.notes = []; S.answer = null; S.title = 'Find the bug';
+  S.practice = { question: `Find the bug: this program has one ${mistake}. Fix it, then press Check answer.`, before: '', blank: program(r), after: '', hint: String(r.hint || ''), answer: null, result: null };
+  task(S.practice.question, '', 'PRACTICE');
+  render();
+  say(`${S.practice.question.replace('Find the bug: ', '')}`);
+}
 function reset(kind) {
   cancelAsk(); stopVoice();
-  Object.assign(S, { kind, lang: '', title: '', files: [], fi: 0, notes: [], at: 0, simple: false, traced: false, answer: null, showFix: false, practice: null, offer: false, ci: null, onScreen: false });
+  Object.assign(S, { kind, lang: '', title: '', files: [], fi: 0, notes: [], at: 0, simple: false, traced: false, answer: null, showFix: false, practice: null, offer: false, ci: null, onScreen: false, hints: false });
   window.max.hideNotes();   // a callout from an on-screen debug goes with it
   setWaiting(null);
   task(null);
@@ -524,7 +561,7 @@ Check each of these separately, line by line, and report every one that fails:
 9. The arithmetic gives what the names and printed text say. Two traps to check every time: in C, C++, Java and C#, int / int drops the fraction even when the result goes into a double or float (an average of 87.25 comes out 87.0); in JavaScript and Java, "Total: " + a + b joins a and b as text ("Total: 55" for 5 and 5) unless the sum is in brackets.`;
   const code = `${S.files.length > 1 ? 'These files belong together; the first is the one open in the editor.\n' : ''}${S.files.map((f) => `=== ${f.name} ===\n${numbered(f.code.replace(/\t/g, '    '))}`).join('\n\n')}`;   // no tabs for Max to copy into his JSON
   const SHAPE = `Reply exactly in this shape:
-{"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
+{"lang":"C","summary":"one sentence overall","errors":[{"file":"main.c","line":12,"text":"the exact text of that line","kind":"syntax","title":"two to five words","say":"what's wrong and why, in plain words","hint":"a nudge that helps them spot it themselves without giving the answer away, with a tiny general example if it helps","find":"the exact line or lines to replace, copied from the file without line numbers","replace":"the corrected line or lines"}]}
 kind is syntax, runtime or logic. Order errors by file, then line. If there are none, errors is [].
 A fix ("replace") is the smallest change that makes the program correct and do what it is clearly meant to do, written as the complete corrected line or lines with the same indentation. Never delete, blank out or comment out working logic, and never add comments. If the fix needs a new line next to this one (declaring a variable, reading input), put it in "replace" together with this line. If one line has several problems, every fix for that line is the complete line with ALL of its problems fixed.`;
   // One pass, on NVIDIA's big model without reasoning (~3 s): accurate first time, so nothing changes after you start
@@ -586,7 +623,9 @@ A fix ("replace") is the smallest change that makes the program correct and do w
     S.notes = errorNotes(res).map((n, i) => ({ ...n, n: i + 1 }));
     S.at = 0; S.answer = null; S.showFix = false;
     if (S.notes.length) S.fi = S.notes[0].fi;
-    const summary = (S.notes.length ? `${S.notes.length} problem${S.notes.length > 1 ? 's' : ''}: ${res.summary || ''}`.trim() : 'No problems found. ' + (res.summary || '')).trim() + unsaved;
+    // With hints on, the summary doesn't give the answers away.
+    const many = `${S.notes.length} problem${S.notes.length > 1 ? 's' : ''}`;
+    const summary = (S.notes.length ? (S.hints && S.notes.some(hinted) ? `${many}. Each starts with a hint: try to spot it yourself, or press Show me.` : `${many}: ${res.summary || ''}`.trim()) : 'No problems found. ' + (res.summary || '')).trim() + unsaved;
     task(summary, S.notes.length ? 'bad' : '', S.notes.length ? 'DEBUG' : 'ALL CLEAR');
     render();
     if (S.onScreen) {
@@ -596,10 +635,11 @@ A fix ("replace") is the smallest change that makes the program correct and do w
     }
   };
   // "Just fix it" (Settings): no walking through the bugs, they're all fixed at once and written to the bug log.
-  const quick = (await window.max.prefs()).debug === 'fix';
+  const p = await window.max.prefs(), quick = p.debug === 'fix';
+  S.hints = !quick && p.level !== 'expert';   // Teach me: hints first, except for experts
   show(r);
   if (quick && S.notes.length) return fixAll(true);
-  say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${S.notes[0].say}` : "I couldn't find any problems in it.");
+  say(S.notes.length ? `I found ${S.notes.length === 1 ? 'one problem' : `${S.notes.length} problems`}. Number 1, line ${S.notes[0].line}. ${hinted(S.notes[0]) ? `Here's a hint. ${S.notes[0].hint}` : S.notes[0].say}` : "I couldn't find any problems in it.");
 }
 // The classic beginner bug the models sometimes skip, found in code for C, C++, Java and C#: a variable assigned at the
 // start of a line that is never declared anywhere. Unless Max already reported it, it becomes an error whose fix
@@ -832,7 +872,7 @@ function errorNotes(r) {
     const find = real(unnumber(e.find)).replace(/\r\n/g, '\n'), replace = real(unnumber(e.replace ?? '')).replace(/\r\n/g, '\n');
     const text = real(String(e.text || '')) || find.split('\n')[0];
     // The line may come as text ("4| int a,b"): its number is what counts.
-    const n = { fi, line: locate(f.code, parseInt(e.line, 10), text), text, say: String(e.say), kind: String(e.kind || 'error'), title: String(e.title || ''),
+    const n = { fi, line: locate(f.code, parseInt(e.line, 10), text), text, say: String(e.say), hint: String(e.hint || ''), kind: String(e.kind || 'error'), title: String(e.title || ''),
       find, replace, path: f.path, fileName: f.name };
     // Not in the code (ignoring spaces and tabs, as Apply fix does), or a "fix" that changes nothing: no Fix button.
     const squash = (s) => String(s).replace(/\s+/g, '');
@@ -1069,6 +1109,7 @@ function act(a) {
   if (a === 'fix') return showFix(current()?.n);
   if (a === 'apply') return applyFix();
   if (a === 'fixall') return fixAll();
+  if (a === 'reveal') return reveal();
   if (a === 'nofix') { S.showFix = false; setWaiting(null); render(); return say('Okay, I left it.'); }
   if (a === 'check') return check();
   if (a === 'hint') return hint();
@@ -1119,6 +1160,7 @@ window.max.onTutor((job) => {
   if (c === 'next' || c === 'prev') return act(c);
   if (c === 'applyHere') { S.showFix = true; return applyFix(); }   // the callout's Apply fix
   if (c === 'fixAll') return fixAll();
+  if (c === 'reveal') return reveal();
   if (c === 'simple') { S.simple = true; render(); return sayCurrent(); }
   if (c === 'trace') return trace();
   if (c === 'fix') return showFix(job.n);

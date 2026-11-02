@@ -49,3 +49,5 @@
 .home .run .diff { margin-top: 6px; }
 .home #toLog { margin-left: 16px; }
 .home .run p code { font: 12.5px var(--mono); color: var(--text); }
+.home .weak .row { justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.home .weak .row .btn { padding: 3px 14px; }

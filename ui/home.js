@@ -86,7 +86,27 @@
     const log = await window.max.bugLog();
     const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls, textContent: text ?? '' });
     const when = (t) => new Date(t).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    $('#log').replaceChildren(...(log.length ? log.map((run) => {
+    // Your most common mistakes, each with an exercise on it (practising your own weak spots beats rereading).
+    const seen = new Map();
+    for (const run of log) for (const f of run.fixes) {
+      const key = String(f.title || f.kind || '').toLowerCase().trim();
+      if (!key) continue;
+      const s = seen.get(key) || { title: f.title || f.kind, n: 0, lang: run.lang };
+      s.n++; seen.set(key, s);
+    }
+    const top = [...seen.values()].filter((s) => s.n > 1).sort((a, b) => b.n - a.n).slice(0, 3);
+    const weak = el('div', 'weak');
+    if (top.length) {
+      weak.append(el('h2', '', 'Your common mistakes'));
+      for (const s of top) {
+        const row = el('div', 'row');
+        const go = el('button', 'btn', 'Practise');
+        go.onclick = () => { leave(); window.max.mode('panel'); practiceOn(s.title, s.lang); };
+        row.append(el('span', '', `${s.title} · ${s.n} times`), go);
+        weak.append(row);
+      }
+    }
+    $('#log').replaceChildren(weak, ...(log.length ? log.map((run) => {
       const box = el('div', 'run');
       box.append(el('h2', '', `${run.file}${run.lang ? ` · ${run.lang}` : ''} · ${when(run.time)} · ${run.fixes.length} fix${run.fixes.length > 1 ? 'es' : ''}`));
       for (const f of run.fixes) {
