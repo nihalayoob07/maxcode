@@ -21,6 +21,14 @@ He dresses for the time of day: pyjamas and a nightcap at night (with zzz after 
 
 **Free, with daily limits.** See [docs/GUIDE.md](docs/GUIDE.md) for the plans and keys (and [docs/SELLING.md](docs/SELLING.md) for setting up Max Plus). It needs internet. Out of the box, answers (NVIDIA Nemotron) and Max's voice (ElevenLabs) come through the free Max Code server in `server/`, with a daily allowance per install. Add your own free NVIDIA key (and optionally an ElevenLabs key) in Settings → Keys to go direct with no limits; keys are stored encrypted on the PC (Windows DPAPI).
 
+## Privacy and safety
+
+- **What leaves your PC, and only when you ask:** the code you debug, explain or ask about, and for **Debug my code** a picture of the screen it's on. It goes to NVIDIA (through the Max Code server unless you added your own key). Nothing is sent in the background, and the screen is never captured unless you press Debug my code or Apply fix.
+- **Stays on your PC:** your voice (heard by Whisper on the PC), your keys (encrypted with Windows DPAPI), the bug log, course progress and settings. Pictures of the screen are deleted as soon as they're read.
+- **Your code is never run.** Max only compiles it to check it (TinyCC for C, plus g++, javac, Python and Node when the PC has them).
+- **Code is data, not instructions.** Text inside code (a comment saying "ignore your rules") can't steer Max into adding anything to your files: Fix all refuses a rewrite that changes more than the bugs need, or adds things like running commands, network calls or deleting files that weren't already there.
+- **The app is locked down:** every window is sandboxed, can't navigate to the web or open other pages, only Max's own pages can reach its internals, only they get the microphone, and links open in your browser. Electron is kept current (45.x).
+
 ## Install
 
 Download `MaxCode-Setup.exe` from the [Releases](https://github.com/nihalayoob07/maxcode/releases) page and run it. It installs, adds a desktop shortcut and opens. Windows may warn about an unknown publisher (the app isn't code-signed yet): click **More info → Run anyway**.
